@@ -38,7 +38,9 @@
   "dependencies": {
     "@langchain/community": "^0.3.45",
     "@langchain/core": "^0.3.57",
+    "@langchain/ollama": "^0.2.1",
     "@langchain/openai": "^0.5.12",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",
     "axios": "^1.9.0",
@@ -47,6 +49,7 @@
     "crawlee": "^3.13.7",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "langchain": "^0.3.27"
+    "langchain": "^0.3.27",
+    "playwright": "^1.45.3"
   }
 }
