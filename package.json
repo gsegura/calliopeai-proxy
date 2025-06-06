@@ -40,6 +40,7 @@
     "@langchain/core": "^0.3.57",
     "@langchain/ollama": "^0.2.1",
     "@langchain/openai": "^0.5.12",
+    "@langchain/tavily": "^0.1.2",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",
