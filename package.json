@@ -1,0 +1,48 @@
+{
+  "name": "calliope-proxy-service",
+  "version": "1.0.0",
+  "description": "Proxy service for Calliope project, handling requests to external APIs like web search, crawling, and LLMs.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gsegura/calliopeai-proxy.git"
+  },
+  "keywords": [
+    "proxy",
+    "llm",
+    "search",
+    "crawl",
+    "api",
+    "calliope"
+  ],
+  "author": "Calliope AI Team",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gsegura/calliopeai-proxy/issues"
+  },
+  "homepage": "https://github.com/gsegura/calliopeai-proxy#readme",
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@langchain/community": "^0.3.45",
+    "@langchain/core": "^0.3.57",
+    "@langchain/openai": "^0.5.12",
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "crawlee": "^3.13.7",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "langchain": "^0.3.27"
+  }
+}
