@@ -1,16 +1,10 @@
-import { CheerioCrawler, Dataset, log } from 'crawlee';
 import { NextFunction, Request, Response } from 'express';
+import { CrawlerService, CrawledData, CrawlerOptions } from '../services/crawlerService'; // Import new service and types
+import { log } from 'crawlee'; // Keep crawlee log for consistency if used elsewhere, or remove if not needed
 
-// Suppress non-error logs for cleaner output during normal operation
+// Suppress non-error logs for cleaner output - this might be duplicative if service also does it.
+// Consider centralizing log level config if necessary. For now, keep it to ensure controller-level logs are also filtered.
 log.setLevel(log.LEVELS.ERROR);
-
-interface CrawledData {
-  url: string;
-  path: string;
-  title?: string;
-  bodySnippet?: string;
-  error?: string;
-}
 
 export const crawlWebsite = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { startUrl, maxDepth, limit } = req.body;
@@ -23,105 +17,38 @@ export const crawlWebsite = async (req: Request, res: Response, next: NextFuncti
   const maxRequestsToCrawl = limit ? parseInt(limit as string, 10) : 50; // Default limit
   const maximumCrawlDepth = maxDepth ? parseInt(maxDepth as string, 10) : 2; // Default depth
 
-  console.log(`Received crawl request for startUrl: "${startUrl}", maxDepth: ${maximumCrawlDepth}, limit: ${maxRequestsToCrawl}`);
+  console.log(`crawlController: Received crawl request for startUrl: "${startUrl}", maxDepth: ${maximumCrawlDepth}, limit: ${maxRequestsToCrawl}`);
 
-  const collectedData: CrawledData[] = [];
-  const dataset = await Dataset.open(`crawl-${Date.now()}`); // Store data in a dataset
+  const crawlerService = new CrawlerService();
+  const crawlerOptions: CrawlerOptions = {
+    startUrl,
+    maxDepth: maximumCrawlDepth,
+    maxRequests: maxRequestsToCrawl,
+  };
 
   try {
-    const crawler = new CheerioCrawler({
-      maxRequestsPerCrawl: maxRequestsToCrawl,
-      minConcurrency: 1,
-      maxConcurrency: 5,
-      maxRequestRetries: 1,
-      requestHandlerTimeoutSecs: 60, // Increased timeout for potentially slow pages
-      navigationTimeoutSecs: 60, // Increased timeout for navigation
+    const collectedData: CrawledData[] = await crawlerService.launchCrawl(crawlerOptions);
 
-      requestHandler: async ({ request, $, body }) => {
-        const currentDepth = request.userData.depth || 0;
-        if (currentDepth > maximumCrawlDepth) {
-          log.info(`Skipping ${request.url} due to depth: ${currentDepth} > ${maximumCrawlDepth}`);
-          return;
-        }
-
-        log.info(`Processing ${request.url} at depth ${currentDepth}...`);
-        const title = $('title').text();
-        const url = request.loadedUrl || request.url; // Use loadedUrl if available (after redirects)
-        const path = new URL(url).pathname;
-
-        // Simple body text snippet
-        const bodySnippet = $('body').text().substring(0, 1000).replace(/\s\s+/g, ' ').trim();
-
-        const pageData: CrawledData = { url, path, title, bodySnippet };
-        await dataset.pushData(pageData); // Push to dataset
-        collectedData.push(pageData); // Also keep in memory for current response
-
-        // Enqueue links for next depth
-        if (currentDepth < maximumCrawlDepth) {
-          // Selectors for links to enqueue - can be made more specific
-          const links = $('a[href]')
-            .map((_i, el) => $(el).attr('href'))
-            .get()
-            .filter(href => href && (href.startsWith('http') || href.startsWith('/')));
-
-          for (const link of links) {
-            try {
-              const absoluteUrl = new URL(link, request.loadedUrl || request.url).toString();
-              // Check if we've reached our limit, but we can't access pendingRequestCount directly
-              // So let's simplify and just check the collected data count
-              if (collectedData.length < maxRequestsToCrawl) {
-                 if (request.userData.depth !== undefined) { // Ensure depth is defined
-                    await crawler.addRequests([{
-                        url: absoluteUrl,
-                        userData: { depth: currentDepth + 1 }
-                    }]);
-                 }
-              } else {
-                log.info('Request limit reached, not enqueuing further links.');
-                break;
-              }
-            } catch (e) {
-              log.debug(`Invalid URL found: ${link} on page ${request.url}`);
-            }
-          }
-        }
-      },
-
-      failedRequestHandler: async ({ request, error }) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        log.error(`Failed to crawl ${request.url}: ${errorMessage}`);
-        const errorData: CrawledData = {
-          url: request.url,
-          path: new URL(request.url).pathname,
-          error: `Failed to crawl: ${errorMessage}`,
-        };
-        await dataset.pushData(errorData);
-        collectedData.push(errorData);
-      },
-    });
-
-    await crawler.addRequests([{ url: startUrl, userData: { depth: 0 } }]);
-    await crawler.run();
-
-    console.log(`Crawling finished for ${startUrl}. Collected ${collectedData.length} pages.`);
+    console.log(`crawlController: Crawling finished for ${startUrl}. Collected ${collectedData.length} pages.`);
     res.status(200).json({
       message: 'Crawling completed.',
       startUrl,
       maxDepth: maximumCrawlDepth,
       limit: maxRequestsToCrawl,
       resultsCount: collectedData.length,
-      data: collectedData, // Send data collected in memory
-      // dataFromDataset: await dataset.getData(), // Optionally send data from dataset
+      data: collectedData,
     });
 
   } catch (error: any) {
-    console.error(`Error during crawling process for ${startUrl}: ${error.message}`, error);
+    console.error(`crawlController: Error during crawling process for ${startUrl}: ${error.message}`, error);
+    // Pass the error to the centralized error handler if you have one, or return a generic error
+    // For now, mirroring the previous behavior:
     res.status(500).json({
       error: 'Crawling failed.',
-      message: error.message,
+      message: error.message, // It's often better to not expose raw error messages to clients
       startUrl,
     });
-  } finally {
-    await dataset.drop(); // Clean up dataset after use for this request
+    // If you have a global error handler middleware, you might prefer:
+    // next(error);
   }
 };
