@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
-export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
   const requiredHeaders = ['key', 'timestamp', 'v', 'extensionversion', 'os', 'uniqueid'];
   const missingHeaders = [];
 
@@ -11,9 +11,10 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
   }
 
   if (missingHeaders.length > 0) {
-    return res.status(401).json({
+    res.status(401).json({
       error: `Unauthorized: Missing required headers: ${missingHeaders.join(', ')}`
     });
+    return;
   }
 
   // For now, validation is just a presence check.

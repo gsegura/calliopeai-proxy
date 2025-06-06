@@ -44,7 +44,9 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // Global Error Handler - should be the last piece of middleware
-app.use(globalErrorHandler);
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  globalErrorHandler(err, req, res, next);
+});
 
 // Start the server
 app.listen(PORT, () => {

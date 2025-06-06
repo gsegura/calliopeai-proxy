@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 
 interface AppError extends Error {
   statusCode?: number;
@@ -6,11 +6,11 @@ interface AppError extends Error {
 }
 
 export const globalErrorHandler = (
-  err: AppError,
-  req: Request,
-  res: Response,
+  err: AppError, 
+  req: Request, 
+  res: Response, 
   next: NextFunction // eslint-disable-line @typescript-eslint/no-unused-vars
-) => {
+): void => {
   err.statusCode = err.statusCode || 500;
   err.message = err.message || 'Internal Server Error';
 
@@ -35,12 +35,13 @@ export const globalErrorHandler = (
   else {
     // For non-operational errors in development, send full error
     if (process.env.NODE_ENV === 'development') {
-      return res.status(err.statusCode).json({
+      res.status(err.statusCode).json({
         status: 'error',
         message: err.message,
         stack: err.stack,
         error: err,
       });
+      return;
     }
     // In production, send generic message
     res.status(500).json({

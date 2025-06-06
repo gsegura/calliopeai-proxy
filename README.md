@@ -40,9 +40,31 @@ Configuration for the application is managed through environment variables.
 
 *   `PORT`: The port on which the server will listen. Defaults to `3000`.
 
-### Placeholder LLM API Keys:
+### LLM API Keys for Model Proxy:
 
-The `.env.example` file includes placeholders for common LLM providers (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). You will need to add the actual API keys for any LLM providers you intend to use with the `/model-proxy/v1` endpoints. The specific key required will depend on the `model` string passed in the request to these proxy endpoints (e.g., a model string like `openai/gpt-4o/openai/gpt-4o` would imply that `OPENAI_API_KEY` should be set).
+The `.env.example` file includes placeholders for common LLM providers (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). When a request is made to the `/model-proxy/v1/...` endpoints, the request body is expected to contain a `calliopeProperties` object. This object includes an `apiKeyLocation` field, which specifies how the proxy should find the necessary API key.
+
+Currently, the proxy supports the `env:VARIABLE_NAME` format for `apiKeyLocation`. For example, if `apiKeyLocation` is `"env:OPENAI_API_KEY"`, the proxy will look for an environment variable named `OPENAI_API_KEY` to use as the Bearer token for the downstream request to the OpenAI API.
+
+You will need to:
+1.  Add the actual API keys to your `.env` file for any LLM providers you intend to use.
+2.  Ensure that the `VARIABLE_NAME` part of the `apiKeyLocation` value in your requests matches the environment variable name you've set in `.env`.
+3.  The `calliopeProperties` should also include `apiBase` which is the base URL for the target LLM provider (e.g., `https://api.openai.com/v1`).
+
+Example for OpenAI:
+- In `.env`: `OPENAI_API_KEY=sk-yourActualOpenAiKey...`
+- In request to `/model-proxy/v1/chat/completions`:
+  ```json
+  {
+    "model": "owner/pkg/openai/gpt-4o",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "calliopeProperties": {
+      "apiKeyLocation": "env:OPENAI_API_KEY",
+      "apiBase": "https://api.openai.com/v1"
+    }
+  }
+  ```
+Make sure to set the correct `apiBase` for each provider alongside the API key. For Azure OpenAI, `apiBase` would be your specific Azure resource endpoint. For Ollama, it would be the URL where your Ollama instance is running (e.g., `http://localhost:11434/api`).
 
 ## Running the Application
 
