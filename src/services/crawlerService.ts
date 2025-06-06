@@ -1,9 +1,11 @@
 import { PlaywrightCrawler, log, PlaywrightCrawlingContext, EnqueueLinksOptions } from 'crawlee';
 import { Page } from 'playwright';
-import axios from 'axios';
 import { MemoryVectorStore } from 'langchain/vectorstores/memory';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { OllamaEmbeddings } from '@langchain/ollama';
 import { Document } from 'langchain/document';
+import { Embeddings } from '@langchain/core/embeddings';
+import { MCPClientService } from './mcpClientService';
 
 // Suppress non-error logs for cleaner output during normal operation
 log.setLevel(log.LEVELS.ERROR);
@@ -25,25 +27,53 @@ export interface CrawlerOptions {
 
 export class CrawlerService {
   private vectorStore?: MemoryVectorStore;
-  private embeddings?: OpenAIEmbeddings;
+  private embeddings?: Embeddings; // Changed to base Embeddings type
 
   constructor() {
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      console.warn('OPENAI_API_KEY is not set. Vector store will not be initialized. Crawled data will not be added to embeddings.');
-      // Depending on strictness, you might throw an error here:
-      // throw new Error('OPENAI_API_KEY is not set. Cannot initialize CrawlerService.');
-    } else {
-      try {
-        this.embeddings = new OpenAIEmbeddings({ openAIApiKey: openaiApiKey });
-        this.vectorStore = new MemoryVectorStore(this.embeddings);
-        console.log('CrawlerService: OpenAIEmbeddings and MemoryVectorStore initialized successfully.');
-      } catch (error: any) {
-        console.error('CrawlerService: Failed to initialize OpenAIEmbeddings or MemoryVectorStore:', error.message);
-        // Decide if you want to clear them if partially initialized or let them be undefined
-        this.embeddings = undefined;
-        this.vectorStore = undefined;
+    const embeddingProvider = process.env.EMBEDDINGS_PROVIDER?.toLowerCase() || 'openai';
+    let initialized = false;
+
+    log.info(`CrawlerService: Attempting to initialize embeddings with provider: ${embeddingProvider}`);
+
+    try {
+      if (embeddingProvider === 'openai') {
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (!openaiApiKey) {
+          console.warn('OPENAI_API_KEY is not set. OpenAI embeddings will not be initialized.');
+        } else {
+          this.embeddings = new OpenAIEmbeddings({ openAIApiKey: openaiApiKey });
+          console.log('CrawlerService: OpenAIEmbeddings initialized successfully.');
+          initialized = true;
+        }
+      } else if (embeddingProvider === 'ollama') {
+        const ollamaBaseUrl = process.env.OLLAMA_BASE_URL; // e.g., http://localhost:11434
+        const ollamaModel = process.env.OLLAMA_EMBEDDING_MODEL; // e.g., nomic-embed-text
+
+        const ollamaParams: { baseUrl?: string; model?: string } = {};
+        if (ollamaBaseUrl) ollamaParams.baseUrl = ollamaBaseUrl;
+        if (ollamaModel) ollamaParams.model = ollamaModel;
+
+        this.embeddings = new OllamaEmbeddings(ollamaParams);
+        console.log(`CrawlerService: OllamaEmbeddings initialized successfully (Model: ${ollamaModel || 'default'}, BaseURL: ${ollamaBaseUrl || 'default'}).`);
+        initialized = true;
+      } else {
+        console.warn(`CrawlerService: Unknown EMBEDDINGS_PROVIDER "${embeddingProvider}". Vector store will not be initialized.`);
       }
+
+      if (initialized && this.embeddings) {
+        this.vectorStore = new MemoryVectorStore(this.embeddings);
+        console.log('CrawlerService: MemoryVectorStore initialized successfully with the chosen embedding provider.');
+      } else if (initialized && !this.embeddings) {
+        // This case should ideally not be hit if logic is correct, but as a safeguard:
+        console.warn('CrawlerService: Embeddings provider was recognized, but embeddings object was not created. Vector store not initialized.');
+      } else {
+        // This covers cases where provider is unknown or required keys (like OpenAI API key) are missing.
+        console.warn('CrawlerService: Embeddings not initialized. Vector store will not be initialized. Crawled data will not be added to embeddings.');
+      }
+    } catch (error: any) {
+      console.error(`CrawlerService: Failed to initialize embeddings or MemoryVectorStore with provider ${embeddingProvider}:`, error.message);
+      this.embeddings = undefined;
+      this.vectorStore = undefined;
     }
   }
 
@@ -87,17 +117,21 @@ export class CrawlerService {
         let fetchError: string | undefined;
 
         try {
-          // Make POST request to Markitdown service
-          const markitdownServiceUrl = process.env.MARKITDOWN_SERVICE_URL || 'http://markitdown:8080';
-          log.info(`Sending content of ${url} to Markitdown service at ${markitdownServiceUrl}`);
-          const response = await axios.post(markitdownServiceUrl, htmlContent, {
-            headers: { 'Content-Type': 'text/html' },
-            timeout: 30000, // 30 seconds timeout
+          // Get markitdown service URL from environment or use default
+          const markitdownServiceUrl = process.env.MARKITDOWN_SERVICE_URL || 'http://markitdown:8080/mcp';
+          log.info(`Sending content of ${url} to Markitdown MCP service at ${markitdownServiceUrl}`);
+          
+          // Use the MCPClientService to call the convert_to_markdown tool
+          const mcpClient = MCPClientService.getInstance(markitdownServiceUrl);
+          await mcpClient.connect();
+          
+          markdownContent = await mcpClient.callTool<string>('convert_to_markdown', {
+            html: htmlContent
           });
-          markdownContent = response.data;
+          
           log.info(`Successfully converted HTML to Markdown for ${url}`);
         } catch (error: any) {
-          log.error(`Error calling Markitdown service for ${url}: ${error.message}`);
+          log.error(`Error calling Markitdown MCP service for ${url}: ${error.message}`);
           fetchError = `Failed to convert HTML to Markdown: ${error.message}`;
         }
 

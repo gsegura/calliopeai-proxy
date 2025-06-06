@@ -4,9 +4,9 @@ services:
   markitdown:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.markitdown
     ports:
-      - "8080:8080"
+      - "3001:3001"
     # networks:
     #   - your_network_name # Replace with the actual network name if needed
 
