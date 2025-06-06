@@ -1,0 +1,473 @@
+openapi: 3.0.0
+info:
+  title: Calliope Proxy API
+  description: API specification for the Calliope Proxy service used by Calliope AI Coder
+  version: 1.0.0
+paths:
+  /web:
+    post:
+      summary: Search the web
+      description: Performs a web search for the provided query and returns relevant results.
+      operationId: webSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+                - n
+              properties:
+                query:
+                  type: string
+                  description: The search query
+                n:
+                  type: integer
+                  description: The number of results to return
+                  default: 6
+      responses:
+        '200':
+          description: Successful search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContextItem'
+        '401':
+          description: Unauthorized - missing or invalid authentication
+        '500':
+          description: Server error
+      security:
+        - CallioperHeaders: []
+  /crawl:
+    post:
+      summary: Crawl a website
+      description: Crawls a website starting from the provided URL, respecting the specified depth and request limits.
+      operationId: crawlWebsite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - startUrl
+                - maxDepth
+                - limit
+              properties:
+                startUrl:
+                  type: string
+                  description: The URL from which to start crawling
+                maxDepth:
+                  type: integer
+                  description: The maximum depth to crawl
+                limit:
+                  type: integer
+                  description: The maximum number of requests to make during crawling
+      responses:
+        '200':
+          description: Successful crawl results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PageData'
+        '401':
+          description: Unauthorized - missing or invalid authentication
+        '500':
+          description: Server error
+      security:
+        - CallioperHeaders: []
+  /model-proxy/v1/:
+    description: Base path for model proxy endpoints
+    # The actual endpoints are dynamically routed based on the model provider
+  
+  /model-proxy/v1/completions:
+    post:
+      summary: Generate completions
+      description: Proxy endpoint for model completion APIs
+      operationId: modelCompletions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: The model to use for generation. Format for CalliopeProxy is "{ownerSlug}/{packageSlug}/{provider}/{model}"
+                prompt:
+                  type: string
+                  description: The prompt to complete
+                suffix:
+                  type: string
+                  description: Optional suffix for fill-in-the-middle completions
+                max_tokens:
+                  type: integer
+                  description: Maximum number of tokens to generate
+                temperature:
+                  type: number
+                  description: Temperature for sampling
+                calliopeProperties:
+                  $ref: '#/components/schemas/CalliopeProperties'
+              required:
+                - model
+                - prompt
+      responses:
+        '200':
+          description: Successful completion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                  created:
+                    type: integer
+                  model:
+                    type: string
+                  choices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text:
+                          type: string
+                        index:
+                          type: integer
+                        logprobs:
+                          type: object
+                          nullable: true
+                        finish_reason:
+                          type: string
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                      completion_tokens:
+                        type: integer
+                      total_tokens:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+      security:
+        - ApiKey: []
+  
+  /model-proxy/v1/chat/completions:
+    post:
+      summary: Generate chat completions
+      description: Proxy endpoint for chat model APIs
+      operationId: chatCompletions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: The model to use for generation. Format for CalliopeProxy is "{ownerSlug}/{packageSlug}/{provider}/{model}"
+                messages:
+                  type: array
+                  description: Array of messages in the conversation
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user, assistant]
+                      content:
+                        oneOf:
+                          - type: string
+                          - type: array
+                            items:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                  enum: [text, image_url]
+                                text:
+                                  type: string
+                                image_url:
+                                  type: object
+                                  properties:
+                                    url:
+                                      type: string
+                max_tokens:
+                  type: integer
+                  description: Maximum number of tokens to generate
+                temperature:
+                  type: number
+                  description: Temperature for sampling
+                top_p:
+                  type: number
+                  description: Top-p sampling
+                frequency_penalty:
+                  type: number
+                  description: Frequency penalty
+                presence_penalty:
+                  type: number
+                  description: Presence penalty
+                stream:
+                  type: boolean
+                  description: Whether to stream the response
+                stop:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Stop sequences
+                calliopeProperties:
+                  $ref: '#/components/schemas/CalliopeProperties'
+              required:
+                - model
+                - messages
+      responses:
+        '200':
+          description: Successful chat completion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                  created:
+                    type: integer
+                  model:
+                    type: string
+                  choices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                            content:
+                              type: string
+                        finish_reason:
+                          type: string
+                        index:
+                          type: integer
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                      completion_tokens:
+                        type: integer
+                      total_tokens:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+      security:
+        - ApiKey: []
+  
+  /model-proxy/v1/embeddings:
+    post:
+      summary: Generate embeddings
+      description: Proxy endpoint for embedding generation
+      operationId: generateEmbeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: The model to use for embeddings. Format for CalliopeProxy is "{ownerSlug}/{packageSlug}/{provider}/{model}"
+                input:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Text input to generate embeddings for
+                calliopeProperties:
+                  $ref: '#/components/schemas/CalliopeProperties'
+              required:
+                - model
+                - input
+      responses:
+        '200':
+          description: Successful embedding generation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    example: "list"
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        object:
+                          type: string
+                          example: "embedding"
+                        embedding:
+                          type: array
+                          items:
+                            type: number
+                          description: The embedding vector
+                        index:
+                          type: integer
+                          description: The index of the input
+                  model:
+                    type: string
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                      total_tokens:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+      security:
+        - ApiKey: []
+  
+  /model-proxy/v1/rerank:
+    post:
+      summary: Rerank documents
+      description: Proxy endpoint for reranking documents based on relevance
+      operationId: rerankDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: The model to use for reranking. Format for CalliopeProxy is "{ownerSlug}/{packageSlug}/{provider}/{model}"
+                query:
+                  type: string
+                  description: The query to rank documents against
+                documents:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of documents to rerank
+                calliopeProperties:
+                  $ref: '#/components/schemas/CalliopeProperties'
+              required:
+                - model
+                - query
+                - documents
+      responses:
+        '200':
+          description: Successful reranking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: The index of the document in the original array
+                        relevance_score:
+                          type: number
+                          description: The relevance score (higher is more relevant)
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+      security:
+        - ApiKey: []
+
+components:
+  schemas:
+    ContextItem:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The title of the search result
+        content:
+          type: string
+          description: The content of the search result
+        url:
+          type: string
+          description: The URL of the search result
+        type:
+          type: string
+          description: The type of the context item
+      required:
+        - content
+    PageData:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The URL of the page
+        path:
+          type: string
+          description: The path of the page relative to the start URL
+        content:
+          type: string
+          description: The HTML content of the page
+      required:
+        - url
+        - path
+        - content
+    CalliopeProperties:
+      type: object
+      description: Additional properties required by the Calliope proxy service
+      properties:
+        apiKeyLocation:
+          type: string
+          description: Location of the API key, used for secrets management
+        apiBase:
+          type: string
+          description: The actual API base URL to proxy to
+        orgScopeId:
+          type: string
+          nullable: true
+          description: Organization scope ID for multi-tenant environments
+        env:
+          type: object
+          description: Additional environment configuration parameters specific to the LLM provider
+          additionalProperties: true
+  securitySchemes:
+    CallioperHeaders:
+      type: apiKey
+      in: header
+      name: key
+      description: Authentication key for the Calliope API
+    ApiKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Bearer token for API authentication
