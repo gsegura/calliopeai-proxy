@@ -1,7 +1,11 @@
-import { PlaywrightCrawler, log, PlaywrightCrawlingContext, EnqueueLinksOptions } from 'crawlee'; // Added EnqueueLinksOptions
+import { PlaywrightCrawler, log, PlaywrightCrawlingContext, EnqueueLinksOptions } from 'crawlee';
 import { Page } from 'playwright';
+import axios from 'axios';
+import { MemoryVectorStore } from 'langchain/vectorstores/memory';
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { Document } from 'langchain/document';
 
-// Suppress non-error logs for cleaner output during normal operation, similar to controller
+// Suppress non-error logs for cleaner output during normal operation
 log.setLevel(log.LEVELS.ERROR);
 
 export interface CrawledData {
@@ -9,6 +13,7 @@ export interface CrawledData {
   path: string;
   title?: string;
   bodySnippet?: string;
+  markdownContent?: string; // Added markdownContent field
   error?: string;
 }
 
@@ -19,6 +24,29 @@ export interface CrawlerOptions {
 }
 
 export class CrawlerService {
+  private vectorStore?: MemoryVectorStore;
+  private embeddings?: OpenAIEmbeddings;
+
+  constructor() {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.warn('OPENAI_API_KEY is not set. Vector store will not be initialized. Crawled data will not be added to embeddings.');
+      // Depending on strictness, you might throw an error here:
+      // throw new Error('OPENAI_API_KEY is not set. Cannot initialize CrawlerService.');
+    } else {
+      try {
+        this.embeddings = new OpenAIEmbeddings({ openAIApiKey: openaiApiKey });
+        this.vectorStore = new MemoryVectorStore(this.embeddings);
+        console.log('CrawlerService: OpenAIEmbeddings and MemoryVectorStore initialized successfully.');
+      } catch (error: any) {
+        console.error('CrawlerService: Failed to initialize OpenAIEmbeddings or MemoryVectorStore:', error.message);
+        // Decide if you want to clear them if partially initialized or let them be undefined
+        this.embeddings = undefined;
+        this.vectorStore = undefined;
+      }
+    }
+  }
+
   public async launchCrawl(options: CrawlerOptions): Promise<CrawledData[]> {
     const { startUrl, maxDepth, maxRequests } = options;
 
@@ -50,12 +78,51 @@ export class CrawlerService {
         const title = await page.title();
         const url = page.url();
         const path = new URL(url).pathname;
+        const htmlContent = await page.content(); // Get HTML content
 
         const bodyText = await page.evaluate(() => document.body.innerText);
         const bodySnippet = bodyText.substring(0, 1000).replace(/\s\s+/g, ' ').trim();
 
-        const pageData: CrawledData = { url, path, title, bodySnippet };
+        let markdownContent: string | undefined;
+        let fetchError: string | undefined;
+
+        try {
+          // Make POST request to Markitdown service
+          const markitdownServiceUrl = process.env.MARKITDOWN_SERVICE_URL || 'http://markitdown:8080';
+          log.info(`Sending content of ${url} to Markitdown service at ${markitdownServiceUrl}`);
+          const response = await axios.post(markitdownServiceUrl, htmlContent, {
+            headers: { 'Content-Type': 'text/html' },
+            timeout: 30000, // 30 seconds timeout
+          });
+          markdownContent = response.data;
+          log.info(`Successfully converted HTML to Markdown for ${url}`);
+        } catch (error: any) {
+          log.error(`Error calling Markitdown service for ${url}: ${error.message}`);
+          fetchError = `Failed to convert HTML to Markdown: ${error.message}`;
+        }
+
+        const pageData: CrawledData = { url, path, title, bodySnippet, markdownContent, error: fetchError };
         collectedData.push(pageData);
+
+        // Add to vector store if markdownContent is available and vectorStore is initialized
+        if (this.vectorStore && markdownContent) {
+          try {
+            const doc = new Document({ pageContent: markdownContent, metadata: { url, title, path } });
+            await this.vectorStore.addDocuments([doc]);
+            log.info(`Added content from ${url} to vector store.`);
+          } catch (error: any) {
+            log.error(`Error adding document to vector store for ${url}: ${error.message}`);
+            // Optionally, update pageData.error or add a specific vector store error field
+            if (pageData.error) {
+              pageData.error += `; Failed to add to vector store: ${error.message}`;
+            } else {
+              pageData.error = `Failed to add to vector store: ${error.message}`;
+            }
+          }
+        } else if (!this.vectorStore) {
+          console.warn(`Vector store not initialized. Skipping adding content from ${url} to vector store.`);
+        }
+
 
         if (currentDepth < maxDepth) {
           // Refined link enqueueing using enqueueLinks
@@ -87,10 +154,13 @@ export class CrawlerService {
       failedRequestHandler: async ({ request, log }) => {
         const errorMessage = request.errorMessages?.join(', ') || 'Unknown error';
         log.error(`Failed to crawl ${request.url}: ${errorMessage}`);
+        // Ensure collectedData is defined in this scope or passed correctly
+        // If an error occurs with Markitdown, it's handled in requestHandler.
+        // This handler is for Playwright navigation/request errors.
         const errorData: CrawledData = {
           url: request.url,
           path: new URL(request.url).pathname,
-          error: `Failed to crawl: ${errorMessage}`,
+          error: `Failed to crawl: ${errorMessage}`, // This error is specific to crawling
         };
         collectedData.push(errorData);
       },
@@ -106,5 +176,21 @@ export class CrawlerService {
     }
 
     return collectedData;
+  }
+
+  // Example method to allow searching the vector store
+  public async searchSimilarDocuments(query: string, k: number = 5) {
+    if (!this.vectorStore) {
+      console.warn('Search attempted but vector store is not initialized.');
+      return [];
+    }
+    try {
+      const results = await this.vectorStore.similaritySearch(query, k);
+      console.log(`Found ${results.length} similar documents for query: "${query}"`);
+      return results;
+    } catch (error: any) {
+      console.error('Error during similarity search:', error.message);
+      return [];
+    }
   }
 }

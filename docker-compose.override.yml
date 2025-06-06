@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  markitdown:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    # networks:
+    #   - your_network_name # Replace with the actual network name if needed
+
+# networks:
+#   your_network_name: # Ensure this network is defined in your main docker-compose.yml
+#     external: true # Or define it here if this is the primary compose file for it
+#                     # If defined in another docker-compose.yml, 'external: true' is appropriate.
