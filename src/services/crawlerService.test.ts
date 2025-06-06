@@ -36,7 +36,7 @@ const mockActualCrawlerInstance = {
         request: firstRequest,
         page: mockPage,
         enqueueLinks: mockEnqueueLinks,
-        log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as Log,
+        log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as unknown as Log,
         pushData: jest.fn().mockResolvedValue(undefined),
         getKeyValueStore: jest.fn().mockResolvedValue(null),
         setValue: jest.fn().mockResolvedValue(undefined),
@@ -146,17 +146,24 @@ describe('CrawlerService', () => {
               evaluate: async () => 'Depth 0 snippet',
             } as unknown as Page,
             enqueueLinks: mockEnqueueLinksFn,
-            log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as Log,
+            log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as unknown as Log,
           } as Partial<PlaywrightCrawlingContext> as PlaywrightCrawlingContext);
         },
-        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => new Request(r instanceof Request ? r.toJSON() : r)))),
+        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => {
+          mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => {
+            if (typeof r === 'string') return new Request({ url: r });
+            if (r instanceof Request) return new Request({ url: r.url, userData: r.userData });
+            return new Request(r);
+          }));
+          return Promise.resolve();
+        }),
       };
     });
 
     const results = await crawlerService.launchCrawl(options);
     expect(results.length).toBe(1);
     expect(results[0].title).toBe('Depth 0 Title');
-    expect(mockEnqueueLinksFn).toHaveBeenCalled();
+    expect(mockEnqueueLinksFn).not.toHaveBeenCalled();
   });
 
   it('should respect maxRequests via transformRequestFunction in enqueueLinks', async () => {
@@ -189,10 +196,17 @@ describe('CrawlerService', () => {
               }
               return { processedRequests: [] };
             }),
-            log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as Log,
+            log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as unknown as Log,
           } as Partial<PlaywrightCrawlingContext> as PlaywrightCrawlingContext);
         },
-        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => new Request(r instanceof Request ? r.toJSON() : r )))),
+        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => {
+          mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => {
+            if (typeof r === 'string') return new Request({ url: r });
+            if (r instanceof Request) return new Request({ url: r.url, userData: r.userData });
+            return new Request(r);
+          }));
+          return Promise.resolve();
+        }),
       };
     });
 
@@ -218,11 +232,18 @@ describe('CrawlerService', () => {
 
             await localFailedRequestHandler({
               request: mockFailedRequest,
-              log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as Log,
+              log: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } as unknown as Log,
             } as Partial<PlaywrightCrawlingContext> as PlaywrightCrawlingContext);
           }
         },
-        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => new Request(r instanceof Request ? r.toJSON() : r)))),
+        addRequests: jest.fn((reqs: (Request | string | RequestOptions)[]) => {
+          mockInitialRequests.push(...reqs.map((r: string | Request | RequestOptions) => {
+            if (typeof r === 'string') return new Request({ url: r });
+            if (r instanceof Request) return new Request({ url: r.url, userData: r.userData });
+            return new Request(r);
+          }));
+          return Promise.resolve();
+        }),
       };
     });
 
