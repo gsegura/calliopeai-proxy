@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  calliope-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile # Assumes your new Dockerfile is named Dockerfile
+    ports:
+      - "3002:3002" # Maps host port 3002 to container port 3002 (or your app's configured port)
+    env_file:
+      - .env # Passes environment variables from .env file to the container
+    # networks:
+    #   - your_network_name # Uncomment if you have a shared network
+
   markitdown:
     build:
       context: .
