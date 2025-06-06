@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { CheerioCrawler, Configuration, Dataset, log } from 'crawlee';
+import { CheerioCrawler, Dataset, log } from 'crawlee';
+import { NextFunction, Request, Response } from 'express';
 
 // Suppress non-error logs for cleaner output during normal operation
 log.setLevel(log.LEVELS.ERROR);
@@ -12,11 +12,12 @@ interface CrawledData {
   error?: string;
 }
 
-export const crawlWebsite = async (req: Request, res: Response) => {
+export const crawlWebsite = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { startUrl, maxDepth, limit } = req.body;
 
   if (!startUrl) {
-    return res.status(400).json({ error: 'Missing required parameter: startUrl' });
+    res.status(400).json({ error: 'Missing required parameter: startUrl' });
+    return;
   }
 
   const maxRequestsToCrawl = limit ? parseInt(limit as string, 10) : 50; // Default limit
@@ -30,7 +31,6 @@ export const crawlWebsite = async (req: Request, res: Response) => {
   try {
     const crawler = new CheerioCrawler({
       maxRequestsPerCrawl: maxRequestsToCrawl,
-      maxRequests: maxRequestsToCrawl, // Ensure the crawler respects the limit
       minConcurrency: 1,
       maxConcurrency: 5,
       maxRequestRetries: 1,
@@ -67,7 +67,9 @@ export const crawlWebsite = async (req: Request, res: Response) => {
           for (const link of links) {
             try {
               const absoluteUrl = new URL(link, request.loadedUrl || request.url).toString();
-              if (collectedData.length + crawler.requestQueue.pendingRequestCount() < maxRequestsToCrawl) {
+              // Check if we've reached our limit, but we can't access pendingRequestCount directly
+              // So let's simplify and just check the collected data count
+              if (collectedData.length < maxRequestsToCrawl) {
                  if (request.userData.depth !== undefined) { // Ensure depth is defined
                     await crawler.addRequests([{
                         url: absoluteUrl,
@@ -86,11 +88,12 @@ export const crawlWebsite = async (req: Request, res: Response) => {
       },
 
       failedRequestHandler: async ({ request, error }) => {
-        log.error(`Failed to crawl ${request.url}: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        log.error(`Failed to crawl ${request.url}: ${errorMessage}`);
         const errorData: CrawledData = {
           url: request.url,
           path: new URL(request.url).pathname,
-          error: `Failed to crawl: ${error.message}`,
+          error: `Failed to crawl: ${errorMessage}`,
         };
         await dataset.pushData(errorData);
         collectedData.push(errorData);

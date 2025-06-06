@@ -1,16 +1,18 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { SearchApi } from '@langchain/community/tools/searchapi';
 
-export const searchWeb = async (req: Request, res: Response) => {
+export const searchWeb = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { query, n } = req.body; // n is for the number of results
 
   if (!query) {
-    return res.status(400).json({ error: 'Missing required parameter: query' });
+    res.status(400).json({ error: 'Missing required parameter: query' });
+    return;
   }
 
   if (!process.env.SEARCHAPI_API_KEY) {
     console.error('SEARCHAPI_API_KEY is not set in environment variables.');
-    return res.status(500).json({ error: 'Server configuration error: Search API key is missing.' });
+    res.status(500).json({ error: 'Server configuration error: Search API key is missing.' });
+    return;
   }
 
   console.log(`Received web search request for query: "${query}"${n ? ` with n: ${n}` : ''}`);
@@ -47,10 +49,12 @@ export const searchWeb = async (req: Request, res: Response) => {
     console.error(`Error during web search for query "${query}": ${error.message}`, error);
     // Check if the error is from SearchApi (e.g., authentication, bad request)
     if (error.message && error.message.includes('401')) {
-        return res.status(401).json({ error: 'Search API authentication failed. Check API key.'});
+        res.status(401).json({ error: 'Search API authentication failed. Check API key.'});
+        return;
     }
     if (error.message && error.message.includes('400')) {
-        return res.status(400).json({ error: `Search API bad request: ${error.message}`});
+        res.status(400).json({ error: `Search API bad request: ${error.message}`});
+        return;
     }
     res.status(500).json({
       error: 'Web search failed.',

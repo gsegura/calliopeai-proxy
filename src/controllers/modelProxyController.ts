@@ -1,31 +1,35 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { parseModelString } from '../utils/proxyUtils';
 import { proxyLlmRequest, getApiKey, CalliopeProperties } from '../services/llmProxyService';
 
 // Helper function to process and forward requests
-const handleProxyRequest = async (req: Request, res: Response, endpointPath: string) => {
+const handleProxyRequest = async (req: Request, res: Response, next: NextFunction, endpointPath: string): Promise<void> => {
   const { model, calliopeProperties, ...downstreamBody } = req.body as { model: string; calliopeProperties?: CalliopeProperties; [key: string]: any; };
 
   if (!model) {
-    return res.status(400).json({ error: 'Missing required parameter: model' });
+    res.status(400).json({ error: 'Missing required parameter: model' });
+    return;
   }
 
   if (!calliopeProperties || !calliopeProperties.apiBase) {
-    return res.status(400).json({ error: 'Missing calliopeProperties or apiBase in request body' });
+    res.status(400).json({ error: 'Missing calliopeProperties or apiBase in request body' });
+    return;
   }
 
   const parsedModel = parseModelString(model);
   if (!parsedModel.isValid) {
-    return res.status(400).json({
+    res.status(400).json({
       error: 'Invalid model string format.',
       details: parsedModel.error,
       receivedModelString: model,
     });
+    return;
   }
 
   const apiKey = getApiKey(calliopeProperties.apiKeyLocation);
   if (!apiKey) {
-    return res.status(400).json({ error: 'Failed to retrieve API key. Check apiKeyLocation and environment variables.' });
+    res.status(400).json({ error: 'Failed to retrieve API key. Check apiKeyLocation and environment variables.' });
+    return;
   }
 
   // Construct the full downstream URL
@@ -63,19 +67,19 @@ const handleProxyRequest = async (req: Request, res: Response, endpointPath: str
   }
 };
 
-export const proxyChatCompletions = async (req: Request, res: Response) => {
-  await handleProxyRequest(req, res, '/chat/completions');
+export const proxyChatCompletions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  await handleProxyRequest(req, res, next, '/chat/completions');
 };
 
-export const proxyCompletions = async (req: Request, res: Response) => {
-  await handleProxyRequest(req, res, '/completions');
+export const proxyCompletions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  await handleProxyRequest(req, res, next, '/completions');
 };
 
-export const proxyEmbeddings = async (req: Request, res: Response) => {
-  await handleProxyRequest(req, res, '/embeddings');
+export const proxyEmbeddings = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  await handleProxyRequest(req, res, next, '/embeddings');
 };
 
-export const proxyRerank = async (req: Request, res: Response) => {
+export const proxyRerank = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   // Note: The OAS spec for rerank has path /model-proxy/v1/rerank.
   // Assuming the calliopeProperties.apiBase would point to the model provider's base URL,
   // and the specific rerank path for that provider needs to be appended.
@@ -83,5 +87,5 @@ export const proxyRerank = async (req: Request, res: Response) => {
   // the full path is somehow part of apiBase or needs to be constructed differently.
   // For consistency with other OpenAI-like endpoints, using '/rerank'.
   // This might need adjustment based on actual provider API structures for reranking.
-  await handleProxyRequest(req, res, '/rerank');
+  await handleProxyRequest(req, res, next, '/rerank');
 };
