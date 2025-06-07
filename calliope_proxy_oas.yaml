@@ -412,20 +412,43 @@ components:
     ContextItem:
       type: object
       properties:
-        title:
-          type: string
-          description: The title of the search result
         content:
           type: string
           description: The content of the search result
-        url:
+        name:
           type: string
-          description: The URL of the search result
-        type:
+          description: The name (title) of the search result
+        description:
           type: string
-          description: The type of the context item
+          description: The description (snippet) of the search result
+        editing:
+          type: boolean
+          description: Whether the item is currently being edited
+          nullable: true
+        editable:
+          type: boolean
+          description: Whether the item is editable
+          nullable: true
+        icon:
+          type: string
+          description: Icon for the context item
+          nullable: true
+        uri:
+          type: string # Assuming ContextItemUri is a string for now, can be expanded if needed
+          description: The URI of the context item
+          nullable: true
+        hidden:
+          type: boolean
+          description: Whether the item is hidden
+          nullable: true
+        status:
+          type: string
+          description: Status of the context item
+          nullable: true
       required:
         - content
+        - name
+        - description
     PageData:
       type: object
       properties:

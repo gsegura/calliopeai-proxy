@@ -1,4 +1,4 @@
-import { SearchOptions, SearchResult, SearchServiceProvider } from './searchInterface';
+import { SearchOptions, ContextItem, SearchServiceProvider } from './searchInterface';
 import { SearchServiceFactory, SearchProviderType } from './searchServiceFactory';
 
 export class SearchService {
@@ -37,7 +37,7 @@ export class SearchService {
    * @param options Optional search options
    * @returns Search results
    */
-  public async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+  public async search(query: string, options?: SearchOptions): Promise<ContextItem[]> {
     return await this.provider.search(query, options);
   }
 }

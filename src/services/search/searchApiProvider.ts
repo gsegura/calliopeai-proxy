@@ -1,5 +1,5 @@
 import { SearchApi } from '@langchain/community/tools/searchapi';
-import { SearchOptions, SearchResult, SearchServiceProvider } from './searchInterface';
+import { SearchOptions, ContextItem, SearchServiceProvider } from './searchInterface';
 
 export class SearchApiProvider implements SearchServiceProvider {
   private searchApi: SearchApi;
@@ -16,7 +16,7 @@ export class SearchApiProvider implements SearchServiceProvider {
     return 'SearchAPI';
   }
   
-  async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+  async search(query: string, options?: SearchOptions): Promise<ContextItem[]> {
     try {
       // SearchAPI doesn't support many options directly through the Langchain wrapper
       if (options?.maxResults) {
@@ -26,24 +26,24 @@ export class SearchApiProvider implements SearchServiceProvider {
       const rawResults = await this.searchApi.call(query);
       
       // Parse results - the format may vary based on the SearchAPI response
-      let parsedResults: SearchResult[] = [];
+      let parsedResults: ContextItem[] = [];
       
       try {
         const jsonResults = typeof rawResults === 'string' ? JSON.parse(rawResults) : rawResults;
         
         if (Array.isArray(jsonResults)) {
           parsedResults = jsonResults.map((result: any) => ({
-            title: result.title || '',
-            link: result.link || '',
-            snippet: result.snippet || result.description || '',
-            ...result
+            name: result.title || '',
+            uri: result.link || '',
+            description: result.snippet || result.description || '',
+            content: result.content || result.snippet || result.description || '', // Attempt to find content
           }));
         } else if (jsonResults.results && Array.isArray(jsonResults.results)) {
           parsedResults = jsonResults.results.map((result: any) => ({
-            title: result.title || '',
-            link: result.link || '',
-            snippet: result.snippet || result.description || '',
-            ...result
+            name: result.title || '',
+            uri: result.link || '',
+            description: result.snippet || result.description || '',
+            content: result.content || result.snippet || result.description || '', // Attempt to find content
           }));
         }
       } catch (parseError: any) {

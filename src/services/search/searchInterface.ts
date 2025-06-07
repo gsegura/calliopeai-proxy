@@ -2,11 +2,16 @@
  * Interface definitions for search service providers
  */
 
-export interface SearchResult {
-  title?: string;
-  link?: string;
-  snippet?: string;
-  [key: string]: any; // Allow for additional provider-specific fields
+export interface ContextItem {
+  content: string;
+  name: string; // maps to title
+  description: string; // maps to snippet
+  editing?: boolean;
+  editable?: boolean;
+  icon?: string;
+  uri?: string; // or ContextItemUri if defined as an interface
+  hidden?: boolean;
+  status?: string;
 }
 
 export interface SearchOptions {
@@ -18,6 +23,6 @@ export interface SearchOptions {
 }
 
 export interface SearchServiceProvider {
-  search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
+  search(query: string, options?: SearchOptions): Promise<ContextItem[]>;
   getName(): string;
 }
