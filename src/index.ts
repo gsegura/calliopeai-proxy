@@ -6,8 +6,7 @@ import dotenv from 'dotenv';
 // Initialize dotenv to load .env file (if it exists)
 dotenv.config();
 
-import webRoutes from './routes/webRoutes';
-import crawlRoutes from './routes/crawlRoutes';
+import apiRoutes from './routes/apiRoutes';
 import modelProxyRoutes from './routes/modelProxyRoutes';
 import { globalErrorHandler } from './middleware/errorHandler';
 
@@ -33,8 +32,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 
 // Mount Routers
-app.use('/api/web', webRoutes); // Assuming /api prefix for web/crawl for clarity
-app.use('/api/crawl', crawlRoutes);
+app.use('/api', apiRoutes);
 app.use('/model-proxy/v1', modelProxyRoutes);
 
 

@@ -1,5 +1,5 @@
 import { TavilySearchResponse, TavilySearch } from '@langchain/tavily';
-import { SearchOptions, SearchResult, SearchServiceProvider } from './searchInterface';
+import { SearchOptions, ContextItem, SearchServiceProvider } from './searchInterface';
 
 export class TavilyProvider implements SearchServiceProvider {
   private client: TavilySearch;
@@ -20,7 +20,7 @@ export class TavilyProvider implements SearchServiceProvider {
     return 'Tavily';
   }
   
-  async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+  async search(query: string, options?: SearchOptions): Promise<ContextItem[]> {
     try {
       // Build input object for Tavily search
       const searchInput = {
@@ -58,10 +58,10 @@ export class TavilyProvider implements SearchServiceProvider {
       
       // Map Tavily results to our standard SearchResult format
       return results.results.map((result: any) => ({
-        title: result.title || '',
-        link: result.url || '',
-        snippet: result.content || '',
-        score: result.score, // Keep Tavily-specific score if available
+        name: result.title || '',
+        uri: result.url || '',
+        description: result.content || '',
+        content: result.raw_content || result.content || '', // Prefer raw_content if available
       }));
     } catch (error) {
       console.error('Tavily search error:', error);

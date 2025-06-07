@@ -16,7 +16,7 @@ echo "=============================================="
 echo ""
 
 # Base URL for the proxy (assuming it's running locally on port 3000)
-PROXY_BASE_URL="http://localhost:3000"
+PROXY_BASE_URL="http://localhost:3002"
 
 # Function to check if previous command was successful
 check_success() {
@@ -64,7 +64,7 @@ test_web_search() {
     "${header_args[@]}" \
     -H "Content-Type: application/json" \
     --data "${query_payload}" \
-    "${PROXY_BASE_URL}/web")
+    "${PROXY_BASE_URL}/api/web")
 
   # Extract body and status code
   http_code=$(echo "$response" | tail -n1)
@@ -110,7 +110,7 @@ test_crawl_website() {
     "${header_args[@]}" \
     -H "Content-Type: application/json" \
     --data "${crawl_payload}" \
-    "${PROXY_BASE_URL}/crawl")
+    "${PROXY_BASE_URL}/api/crawl")
 
   http_code=$(echo "$response" | tail -n1)
   body=$(echo "$response" | sed '$d')
@@ -159,7 +159,7 @@ test_chat_completions_ollama() {
   # The proxy parses "{ownerSlug}/{packageSlug}/{provider}/{model}"
   local ollama_payload=$(cat <<EOF
 {
-  "model": "jules-test/ollama-pkg/ollama/llama2",
+  "model": "jules-test/ollama-pkg/ollama/gemma3:4b",
   "messages": [
     {"role": "user", "content": "Why is the sky blue?"}
   ],
@@ -229,7 +229,7 @@ test_chat_completions_gemini() {
   # User needs to ensure this model is valid for their Gemini setup.
   local gemini_payload=$(cat <<EOF
 {
-  "model": "jules-test/gemini-pkg/google/gemini-pro",
+  "model": "jules-test/gemini-pkg/google/gemini-2.0-flash",
   "messages": [
     {"role": "user", "content": "What are the main features of Google Gemini?"}
   ],

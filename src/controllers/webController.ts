@@ -22,12 +22,7 @@ export const searchWeb = async (req: Request, res: Response, next: NextFunction)
     // Get the name of the provider that was used
     const providerName = searchService.getProviderName();
     
-    res.status(200).json({
-      message: 'Web search completed.',
-      provider: providerName,
-      query,
-      results,
-    });
+    res.status(200).json(results);
 
   } catch (error: any) {
     console.error(`Error during web search for query "${query}": ${error.message}`, error);
