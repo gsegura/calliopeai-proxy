@@ -74,7 +74,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/PageData'
+                  $ref: '#/components/schemas/PageData' # Updated to PageData
         '401':
           description: Unauthorized - missing or invalid authentication
         '500':
@@ -458,9 +458,9 @@ components:
         path:
           type: string
           description: The path of the page relative to the start URL
-        content:
+        content: # Ensuring 'content' is here as per user's PageData type
           type: string
-          description: The HTML content of the page
+          description: The content of the page (e.g., Markdown or HTML)
       required:
         - url
         - path

@@ -108,7 +108,6 @@ export class CrawlerService {
         const title = await page.title();
         const url = page.url();
         const path = new URL(url).pathname;
-        const htmlContent = await page.content(); // Get HTML content
 
         const bodyText = await page.evaluate(() => document.body.innerText);
         const bodySnippet = bodyText.substring(0, 1000).replace(/\s\s+/g, ' ').trim();
@@ -126,7 +125,7 @@ export class CrawlerService {
           await mcpClient.connect();
           
           markdownContent = await mcpClient.callTool<string>('convert_to_markdown', {
-            html: htmlContent
+            uri: url
           });
           
           log.info(`Successfully converted HTML to Markdown for ${url}`);
