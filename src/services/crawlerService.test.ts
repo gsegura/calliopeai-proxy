@@ -164,7 +164,6 @@ describe('CrawlerService', () => {
 
   const getMockPage = (url = 'http://example.com/test') => ({
     title: jest.fn().mockResolvedValue('Test Page Title'),
-    content: jest.fn().mockResolvedValue('<html><body><h1>Test Content</h1></body></html>'),
     url: jest.fn().mockReturnValue(url),
     evaluate: jest.fn().mockResolvedValue('Test body text snippet from evaluate'),
   });
@@ -337,7 +336,7 @@ describe('CrawlerService', () => {
       expect(MCPClientService.getInstance).toHaveBeenCalledWith(expect.stringContaining('markitdown'));
       expect(mockConnect).toHaveBeenCalled();
       expect(mockCallTool).toHaveBeenCalledWith('convert_to_markdown', {
-        html: '<html><body><h1>Test Content</h1></body></html>'
+        uri: 'http://example.com/test'
       });
       
       expect(mockAddDocuments).toHaveBeenCalledTimes(1);
@@ -350,7 +349,10 @@ describe('CrawlerService', () => {
         path: '/test',
       });
       expect(results.length).toBe(1);
+      // Check for the CrawledData format fields that are internally used
       expect(results[0].markdownContent).toBe('## Mocked Markdown Content');
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].error).toBeUndefined();
     });
 
@@ -374,13 +376,16 @@ describe('CrawlerService', () => {
       expect(MCPClientService.getInstance).toHaveBeenCalledWith(expect.stringContaining('markitdown'));
       expect(mockConnect).toHaveBeenCalled();
       expect(mockCallTool).toHaveBeenCalledWith('convert_to_markdown', {
-        html: '<html><body><h1>Test Content</h1></body></html>'
+        uri: 'http://example.com/test'
       });
       expect(mockAddDocuments).toHaveBeenCalledTimes(1);
       const documentCall = mockAddDocuments.mock.calls[0][0][0];
       expect(documentCall.pageContent).toBe('## Mocked Markdown Content');
       expect(results.length).toBe(1);
+      // Check for the CrawledData format fields that are internally used
       expect(results[0].markdownContent).toBe('## Mocked Markdown Content');
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].error).toBeUndefined();
     });
 
@@ -399,6 +404,9 @@ describe('CrawlerService', () => {
 
       expect(mockCallTool).toHaveBeenCalledTimes(1);
       expect(mockAddDocuments).not.toHaveBeenCalled();
+      // Check for the CrawledData format fields that are internally used
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].error).toContain('Failed to convert HTML to Markdown: Markitdown MCP service unavailable');
       expect(results[0].markdownContent).toBeUndefined();
       expect(require('crawlee').log.error).toHaveBeenCalledWith(expect.stringContaining("Error calling Markitdown MCP service for http://example.com/test"));
@@ -419,6 +427,9 @@ describe('CrawlerService', () => {
 
       expect(mockCallTool).toHaveBeenCalledTimes(1);
       expect(mockAddDocuments).toHaveBeenCalledTimes(1); // It was called
+      // Check for the CrawledData format fields that are internally used
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].error).toContain('Failed to add to vector store: Vector store failed');
       expect(results[0].markdownContent).toBe('## Mocked Markdown Content'); // Markdown was fetched
       expect(require('crawlee').log.error).toHaveBeenCalledWith("Error adding document to vector store for http://example.com/test: Vector store failed");
@@ -445,6 +456,9 @@ describe('CrawlerService', () => {
       // Check console warnings
       expect(consoleWarnSpy).toHaveBeenCalledWith('OPENAI_API_KEY is not set. OpenAI embeddings will not be initialized.'); // From constructor
       expect(consoleWarnSpy).toHaveBeenCalledWith("Vector store not initialized. Skipping adding content from http://example.com/test to vector store."); // From requestHandler
+      // Check for the CrawledData format fields that are internally used
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].markdownContent).toBe('## Mocked Markdown Content'); // Markdown still fetched
       expect(results[0].error).toBeUndefined(); // No error should be reported for this case
     });
@@ -467,6 +481,9 @@ describe('CrawlerService', () => {
       expect(mockAddDocuments).not.toHaveBeenCalled();
       expect(consoleWarnSpy).toHaveBeenCalledWith('CrawlerService: Unknown EMBEDDINGS_PROVIDER "unknown_provider". Vector store will not be initialized.');
       expect(consoleWarnSpy).toHaveBeenCalledWith("Vector store not initialized. Skipping adding content from http://example.com/test to vector store.");
+      // Check for the CrawledData format fields that are internally used
+      expect(results[0].url).toBe('http://example.com/test');
+      expect(results[0].path).toBe('/test');
       expect(results[0].markdownContent).toBe('## Mocked Markdown Content');
       expect(results[0].error).toBeUndefined();
     });

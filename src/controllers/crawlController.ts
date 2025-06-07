@@ -6,6 +6,13 @@ import { log } from 'crawlee'; // Keep crawlee log for consistency if used elsew
 // Consider centralizing log level config if necessary. For now, keep it to ensure controller-level logs are also filtered.
 log.setLevel(log.LEVELS.ERROR);
 
+// Define the PageData type to align with the API spec
+export type PageData = {
+  url: string;
+  path: string;
+  content: string; // This will be the markdownContent
+};
+
 export const crawlWebsite = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { startUrl, maxDepth, limit } = req.body;
 
@@ -29,26 +36,23 @@ export const crawlWebsite = async (req: Request, res: Response, next: NextFuncti
   try {
     const collectedData: CrawledData[] = await crawlerService.launchCrawl(crawlerOptions);
 
-    console.log(`crawlController: Crawling finished for ${startUrl}. Collected ${collectedData.length} pages.`);
-    res.status(200).json({
-      message: 'Crawling completed.',
-      startUrl,
-      maxDepth: maximumCrawlDepth,
-      limit: maxRequestsToCrawl,
-      resultsCount: collectedData.length,
-      data: collectedData,
-    });
+    // Transform CrawledData to PageData
+    const responseData: PageData[] = collectedData.map(item => ({
+      url: item.url,
+      path: item.path,
+      content: item.markdownContent || item.error || '', // Prioritize markdownContent, fallback to error or empty string
+    }));
+
+    console.log(`crawlController: Crawling finished for ${startUrl}. Collected ${responseData.length} pages.`);
+    // Return the transformed data directly as an array
+    res.status(200).json(responseData);
 
   } catch (error: any) {
     console.error(`crawlController: Error during crawling process for ${startUrl}: ${error.message}`, error);
-    // Pass the error to the centralized error handler if you have one, or return a generic error
-    // For now, mirroring the previous behavior:
     res.status(500).json({
       error: 'Crawling failed.',
-      message: error.message, // It's often better to not expose raw error messages to clients
+      message: error.message, 
       startUrl,
     });
-    // If you have a global error handler middleware, you might prefer:
-    // next(error);
   }
 };
