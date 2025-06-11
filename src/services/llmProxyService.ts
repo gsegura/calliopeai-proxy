@@ -68,7 +68,9 @@ export const proxyLlmRequest = async (
     url: downstreamUrl,
     headers,
     data: requestBody,
-    responseType: originalRequest.body.stream ? 'stream' : 'json',
+    responseType: requestBody.stream ? 'stream' : 'json',
+    // For streaming, we need to handle the response as a stream
+    timeout: requestBody.stream ? 0 : 30000, // No timeout for streaming, 30s for regular requests
   };
 
   try {

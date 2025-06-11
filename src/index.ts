@@ -8,6 +8,7 @@ dotenv.config();
 
 import apiRoutes from './routes/apiRoutes';
 import modelProxyRoutes from './routes/modelProxyRoutes';
+import analyticsRoutes from './routes/analyticsRoutes';
 import { globalErrorHandler } from './middleware/errorHandler';
 
 const app: Express = express();
@@ -34,6 +35,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Mount Routers
 app.use('/api', apiRoutes);
 app.use('/model-proxy/v1', modelProxyRoutes);
+app.use('/proxy', analyticsRoutes);
 
 
 // Simple health check endpoint
@@ -57,6 +59,7 @@ app.listen(PORT, () => {
   console.log(`  /model-proxy/v1/completions (POST)`);
   console.log(`  /model-proxy/v1/embeddings (POST)`);
   console.log(`  /model-proxy/v1/rerank (POST)`);
+  console.log(`  /proxy/analytics/:workspaceId/capture (POST)`);
 });
 
 // Handle unhandled promise rejections

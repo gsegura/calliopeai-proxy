@@ -95,12 +95,31 @@ const handleProxyRequest = async (req: Request, res: Response, next: NextFunctio
       }
     }
 
-    if (req.body.stream && result.data && typeof result.data.pipe === 'function') {
-      // If it's a stream, pipe it to the response.
-      // Ensure appropriate content-type is set (e.g., 'text/event-stream')
-      // The proxyLlmRequest and axios should handle setting the initial content-type from downstream.
-      // If not, we might need to set it explicitly here.
+    // Handle streaming vs non-streaming responses
+    const isStreaming = downstreamBody.stream || req.body.stream;
+    if (isStreaming && result.data && typeof result.data.pipe === 'function') {
+      // For streaming responses, ensure proper content-type is set
+      if (!res.getHeader('content-type')) {
+        res.setHeader('content-type', 'text/event-stream');
+      }
+      if (!res.getHeader('cache-control')) {
+        res.setHeader('cache-control', 'no-cache');
+      }
+      if (!res.getHeader('connection')) {
+        res.setHeader('connection', 'keep-alive');
+      }
+      
       res.status(result.status);
+      
+      // Handle stream errors
+      result.data.on('error', (streamError: Error) => {
+        console.error('Stream error:', streamError);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error occurred' });
+        }
+      });
+      
+      // Pipe the stream to the response
       result.data.pipe(res);
     } else {
       // Otherwise, send the JSON response
@@ -125,7 +144,102 @@ export const proxyEmbeddings = async (req: Request, res: Response, next: NextFun
 };
 
 export const proxyRerank = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  // Note: Different providers may have different rerank endpoints
-  // Cohere uses /rerank, others may vary. The apiBase should point to the correct provider.
-  await handleProxyRequest(req, res, next, '/rerank');
+  try {
+    const { model, calliopeProperties, ...downstreamBody } = req.body as { model: string; calliopeProperties?: CalliopeProperties; [key: string]: any; };
+
+    if (!model) {
+      res.status(400).json({ error: 'Missing required parameter: model' });
+      return;
+    }
+
+    if (!calliopeProperties) {
+      res.status(400).json({ error: 'Missing calliopeProperties in request body' });
+      return;
+    }
+
+    if (!calliopeProperties.apiKeyLocation) {
+      res.status(400).json({ error: 'Missing required field: calliopeProperties.apiKeyLocation' });
+      return;
+    }
+
+    const parsedModel = parseModelString(model);
+    if (!parsedModel.isValid) {
+      res.status(400).json({
+        error: 'Invalid model string format.',
+        details: parsedModel.error,
+        receivedModelString: model,
+      });
+      return;
+    }
+
+    // Check if provider supports reranking BEFORE checking API key
+    const provider = parsedModel.provider?.toLowerCase();
+    const supportedRerankProviders = ['cohere'];
+    
+    if (!supportedRerankProviders.includes(provider)) {
+      res.status(400).json({ 
+        error: `Reranking is not supported for provider '${provider}'. Supported providers: ${supportedRerankProviders.join(', ')}`,
+        provider: provider,
+        supportedProviders: supportedRerankProviders
+      });
+      return;
+    }
+
+    const apiKey = getApiKey(calliopeProperties.apiKeyLocation);
+    if (!apiKey) {
+      res.status(400).json({ error: 'Failed to retrieve API key. Check apiKeyLocation and environment variables.' });
+      return;
+    }
+
+    // Determine the appropriate rerank endpoint based on provider
+    let apiBaseUrl = calliopeProperties.apiBase;
+    let rerankEndpoint = '/rerank';
+
+    if (!apiBaseUrl) {
+      // Since we already validated the provider is supported, we can use a simple switch
+      switch (provider) {
+        case 'cohere':
+          apiBaseUrl = 'https://api.cohere.ai/v1';
+          rerankEndpoint = '/rerank';
+          break;
+        default:
+          // This should never happen since we validated above, but just in case
+          res.status(400).json({ 
+            error: 'apiBase is required for this rerank provider',
+            provider: provider
+          });
+          return;
+      }
+    }
+
+    // Construct the full downstream URL
+    const base = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+    const path = rerankEndpoint.startsWith('/') ? rerankEndpoint : `/${rerankEndpoint}`;
+    const downstreamUrl = `${base}${path}`;
+
+    // For rerank, we typically send the model name, but some providers might expect different format
+    // Cohere expects the model field to be just the model name
+    const requestBodyForDownstream = {
+      ...downstreamBody,
+      model: parsedModel.modelName
+    };
+
+    const result = await proxyLlmRequest(req, downstreamUrl, apiKey, requestBodyForDownstream);
+
+    // Forward headers from the downstream response
+    if (result.headers) {
+      for (const [key, value] of Object.entries(result.headers)) {
+        if (value !== undefined && value !== null) {
+          res.setHeader(key, value as string | string[]);
+        }
+      }
+    }
+
+    // Rerank responses are typically not streamed
+    res.status(result.status).json(result.data);
+
+  } catch (error: any) {
+    console.error(`Error in rerank request: ${error.message}`, error);
+    next(error);
+  }
 };

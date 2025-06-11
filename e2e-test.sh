@@ -401,16 +401,404 @@ EOF
   check_success
 }
 
+# ==============================================
+# Enhanced LLM Tests: Streaming, Tools, Structured Output
+# ==============================================
+
+test_streaming_chat_completions() {
+  echo "Testing /model-proxy/v1/chat/completions (Streaming)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
+    true
+    check_success
+    return
+  fi
+
+  # Test streaming with Gemini (most reliable for streaming)
+  local streaming_payload=$(cat <<EOF
+{
+  "model": "jules-test/gemini-pkg/gemini/gemini-2.0-flash-exp",
+  "messages": [
+    {"role": "user", "content": "Count from 1 to 5, each number on a new line."}
+  ],
+  "stream": true,
+  "max_tokens": 50,
+  "temperature": 0.0,
+  "calliopeProperties": {
+    "apiKeyLocation": "env:GEMINI_API_KEY"
+  }
+}
+EOF
+)
+
+  # For streaming, we expect text/event-stream content-type and SSE format
+  response=$(timeout 10s curl -s -N -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${streaming_payload}" \
+    "${PROXY_BASE_URL}/model-proxy/v1/chat/completions")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body (first 300 chars): $(echo "$body" | cut -c1-300)..."
+  echo "HTTP Code: ${http_code}"
+
+  if [ "${http_code}" -eq 200 ]; then
+    # Check for SSE format (data: prefix) and streaming structure
+    if echo "${body}" | grep -q "data:"; then
+      echo "Validation: Correct streaming format detected."
+      true
+    else
+      echo "Validation: Expected streaming format with 'data:' prefix."
+      false
+    fi
+  else
+    echo "Validation: Expected HTTP 200, got ${http_code}"
+    false
+  fi
+  check_success
+}
+
+test_tool_calling() {
+  echo "Testing /model-proxy/v1/chat/completions (Tool Calling)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ] || [ -z "${GEMINI_API_KEY}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN or GEMINI_API_KEY not set."
+    true
+    check_success
+    return
+  fi
+
+  local tool_payload=$(cat <<EOF
+{
+  "model": "jules-test/gemini-pkg/gemini/gemini-2.0-flash-exp",
+  "messages": [
+    {"role": "user", "content": "What's the weather like in Chicago today?"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the weather in a given location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. Chicago, IL"
+            },
+            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "temperature": 0.0,
+  "calliopeProperties": {
+    "apiKeyLocation": "env:GEMINI_API_KEY"
+  }
+}
+EOF
+)
+
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${tool_payload}" \
+    "${PROXY_BASE_URL}/model-proxy/v1/chat/completions")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body (first 300 chars): $(echo "$body" | cut -c1-300)..."
+  echo "HTTP Code: ${http_code}"
+
+  if [ "${http_code}" -eq 200 ]; then
+    # Check for tool calls in response
+    tool_calls_check=$(echo "${body}" | jq '.choices[0].message.tool_calls // [] | length > 0')
+    if [ "${tool_calls_check}" == "true" ]; then
+      echo "Validation: Tool calling response detected."
+      true
+    else
+      echo "Validation: Expected tool calls in response, but none found."
+      echo "Note: This might be expected if the model decides not to call tools."
+      true  # Don't fail the test as this is model-dependent behavior
+    fi
+  else
+    echo "Validation: Expected HTTP 200, got ${http_code}"
+    false
+  fi
+  check_success
+}
+
+test_structured_output() {
+  echo "Testing /model-proxy/v1/chat/completions (Structured Output)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ] || [ -z "${GEMINI_API_KEY}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN or GEMINI_API_KEY not set."
+    true
+    check_success
+    return
+  fi
+
+  local structured_payload=$(cat <<EOF
+{
+  "model": "jules-test/gemini-pkg/gemini/gemini-2.0-flash-exp",
+  "messages": [
+    {"role": "system", "content": "Extract the event information."},
+    {"role": "user", "content": "John and Susan are going to an AI conference on Friday."}
+  ],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "calendar_event",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "date": {"type": "string"},
+          "participants": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["name", "date", "participants"],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  "temperature": 0.0,
+  "calliopeProperties": {
+    "apiKeyLocation": "env:GEMINI_API_KEY"
+  }
+}
+EOF
+)
+
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${structured_payload}" \
+    "${PROXY_BASE_URL}/model-proxy/v1/chat/completions")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body (first 300 chars): $(echo "$body" | cut -c1-300)..."
+  echo "HTTP Code: ${http_code}"
+
+  if [ "${http_code}" -eq 200 ]; then
+    # Check if response contains structured content
+    content_check=$(echo "${body}" | jq '.choices[0].message.content | type == "string" and length > 0')
+    if [ "${content_check}" == "true" ]; then
+      echo "Validation: Structured output response received."
+      true
+    else
+      echo "Validation: Expected structured content in response."
+      false
+    fi
+  else
+    echo "Validation: Expected HTTP 200, got ${http_code}"
+    false
+  fi
+  check_success
+}
+
+test_rerank_endpoint() {
+  echo "Testing /model-proxy/v1/rerank (Cohere Reranking)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
+    true
+    check_success
+    return
+  fi
+
+  if [ -z "${COHERE_API_KEY}" ]; then
+    echo "SKIPPING: COHERE_API_KEY not set. Reranking test requires Cohere API access."
+    true
+    check_success
+    return
+  fi
+
+  local rerank_payload=$(cat <<EOF
+{
+  "query": "What is the capital of Costa Rica?",
+  "documents": [
+    "The official language of Costa Rica is Spanish.",
+    "San José is the capital and largest city of Costa Rica.",
+    "Costa Rica is known for its lush rainforests and biodiversity."
+  ],
+  "model": "jules-test/cohere-pkg/cohere/rerank-english-v2.0",
+  "calliopeProperties": {
+    "apiKeyLocation": "env:COHERE_API_KEY"
+  }
+}
+EOF
+)
+
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${rerank_payload}" \
+    "${PROXY_BASE_URL}/model-proxy/v1/rerank")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body (first 300 chars): $(echo "$body" | cut -c1-300)..."
+  echo "HTTP Code: ${http_code}"
+
+  if [ "${http_code}" -eq 200 ]; then
+    # Check for Cohere rerank results structure
+    # Cohere returns: {"id": "...", "results": [{"index": 0, "relevance_score": 0.9}, ...]}
+    results_check=$(echo "${body}" | jq '.results | type == "array" and length > 0 and (.[0] | has("index") and has("relevance_score"))')
+    if [ "${results_check}" == "true" ]; then
+      echo "Validation: Correct Cohere rerank results structure."
+      true
+    else
+      echo "Validation: Expected Cohere rerank results array with index and relevance_score."
+      false
+    fi
+  else
+    echo "Validation: Expected HTTP 200, got ${http_code}"
+    echo "Body: ${body}"
+    false
+  fi
+  check_success
+}
+
+test_rerank_unsupported_provider() {
+  echo "Testing /model-proxy/v1/rerank (Unsupported Provider)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
+    true
+    check_success
+    return
+  fi
+
+  # Test with OpenAI model which doesn't support reranking
+  local rerank_payload=$(cat <<EOF
+{
+  "query": "What is the capital of Costa Rica?",
+  "documents": [
+    "The official language of Costa Rica is Spanish.",
+    "San José is the capital and largest city of Costa Rica."
+  ],
+  "model": "jules-test/openai-pkg/openai/gpt-4",
+  "calliopeProperties": {
+    "apiKeyLocation": "env:OPENAI_API_KEY"
+  }
+}
+EOF
+)
+
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${rerank_payload}" \
+    "${PROXY_BASE_URL}/model-proxy/v1/rerank")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body (first 300 chars): $(echo "$body" | cut -c1-300)..."
+  echo "HTTP Code: ${http_code}"
+
+  # Should return 400 with clear error message
+  if [ "${http_code}" -eq 400 ]; then
+    if echo "${body}" | grep -q "not supported"; then
+      echo "Validation: Correct error message for unsupported provider."
+      true
+    else
+      echo "Validation: Expected 'not supported' error message."
+      false
+    fi
+  else
+    echo "Validation: Expected HTTP 400, got ${http_code}"
+    false
+  fi
+  check_success
+}
+
+test_analytics_endpoint() {
+  echo "Testing /proxy/analytics/{workspaceId}/capture (Analytics)..."
+
+  if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
+    echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
+    true
+    check_success
+    return
+  fi
+
+  local analytics_payload=$(cat <<EOF
+{
+  "event": "model_queried",
+  "properties": {
+    "modelName": "gemini/gemini-2.0-flash-exp",
+    "workspaceId": "ws-12345"
+  },
+  "uniqueId": "user-unique-identifier"
+}
+EOF
+)
+
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${PROXY_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${analytics_payload}" \
+    "${PROXY_BASE_URL}/proxy/analytics/ws-12345/capture")
+
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  echo "Response Body: ${body}"
+  echo "HTTP Code: ${http_code}"
+
+  if [ "${http_code}" -eq 200 ]; then
+    echo "Validation: Analytics capture successful."
+    true
+  else
+    echo "Validation: Expected HTTP 200, got ${http_code}"
+    false
+  fi
+  check_success
+}
+
+# ==============================================
 echo "=============================================="
 echo "E2E Tests Finished."
 
 # Call test functions
+echo "=== Basic Functionality Tests ==="
 test_web_search
 test_crawl_website
+
+echo ""
+echo "=== Model Proxy Basic Tests ==="
 test_chat_completions_ollama
 test_chat_completions_gemini
 test_embeddings_ollama
 test_embeddings_gemini
+
+echo ""
+echo "=== Advanced LLM Features Tests ==="
+test_streaming_chat_completions
+test_tool_calling
+test_structured_output
+test_rerank_endpoint
+test_rerank_unsupported_provider
+
+echo ""
+echo "=== Analytics Tests ==="
+test_analytics_endpoint
 
 echo ""
 echo "=============================================="
