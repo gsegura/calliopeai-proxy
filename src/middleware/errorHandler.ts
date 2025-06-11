@@ -1,52 +1,74 @@
 import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
-
-interface AppError extends Error {
-  statusCode?: number;
-  isOperational?: boolean; // To distinguish between operational errors and programming errors
-}
+import { AppError, StandardErrorResponse } from '../utils/errorUtils';
 
 export const globalErrorHandler = (
-  err: AppError, 
+  err: AppError | Error, 
   req: Request, 
   res: Response, 
   next: NextFunction // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void => {
-  err.statusCode = err.statusCode || 500;
-  err.message = err.message || 'Internal Server Error';
+  // Set default values
+  let statusCode = 500;
+  let message = 'Internal Server Error';
+  let details: any = undefined;
+  let isOperational = false;
+
+  // Handle AppError instances
+  if (err instanceof AppError) {
+    statusCode = err.statusCode;
+    message = err.message;
+    details = err.details;
+    isOperational = err.isOperational;
+  } else {
+    // Handle other Error types
+    message = err.message || message;
+    // Check if it's a known error type that should be operational
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+      statusCode = 400;
+      isOperational = true;
+    }
+  }
 
   // Log the error internally
   console.error('ERROR 💥', {
     message: err.message,
     stack: err.stack,
-    statusCode: err.statusCode,
-    isOperational: err.isOperational,
+    statusCode,
+    isOperational,
     path: req.path,
     method: req.method,
+    timestamp: new Date().toISOString(),
   });
 
+  // Prepare the standard error response
+  const errorResponse: StandardErrorResponse = {
+    error: message,
+    statusCode,
+  };
+
   // For operational errors we trust, send details to the client
-  if (err.isOperational) {
-    res.status(err.statusCode).json({
-      status: 'error',
-      message: err.message,
-    });
+  if (isOperational) {
+    if (details) {
+      errorResponse.details = details;
+    }
+    res.status(statusCode).json(errorResponse);
   }
   // For programming or other unknown errors, don't leak error details
   else {
     // For non-operational errors in development, send full error
     if (process.env.NODE_ENV === 'development') {
-      res.status(err.statusCode).json({
-        status: 'error',
-        message: err.message,
+      errorResponse.message = err.message;
+      errorResponse.details = {
         stack: err.stack,
-        error: err,
-      });
+        name: err.name,
+      };
+      res.status(statusCode).json(errorResponse);
       return;
     }
     // In production, send generic message
     res.status(500).json({
-      status: 'error',
-      message: 'Something went very wrong!',
+      error: 'Something went very wrong!',
+      statusCode: 500,
     });
   }
 };

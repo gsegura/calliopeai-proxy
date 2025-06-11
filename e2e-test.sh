@@ -5,9 +5,19 @@
 # This script requires the following environment variables to be set:
 # - CALLIOPE_API_KEY: API key for /web and /crawl endpoints
 # - PROXY_ACCESS_TOKEN: Bearer token for /model-proxy/* endpoints
-# - OLLAMA_API_BASE: Base URL for Ollama (e.g., http://localhost:11434/v1)
-# - GEMINI_API_BASE: Base URL for Google Gemini API (e.g., https://generativelanguage.googleapis.com/v1beta)
+# 
+# Optional environment variables:
+# - OLLAMA_API_BASE: Base URL for Ollama (defaults to http://localhost:11434/v1)
+# - OLLAMA_API_KEY: API key for Ollama (usually empty string or not needed)
+# - GEMINI_API_BASE: Base URL for Google Gemini API (defaults to https://generativelanguage.googleapis.com/v1beta)
 # - GEMINI_API_KEY: API key for Google Gemini
+#
+# Example usage:
+# export CALLIOPE_API_KEY="your-calliope-key"
+# export PROXY_ACCESS_TOKEN="your-bearer-token"
+# export OLLAMA_API_KEY=""  # Ollama typically doesn't need an API key
+# export GEMINI_API_KEY="your-gemini-key"
+# ./e2e-test.sh
 
 # Ensure jq is installed for JSON parsing: sudo apt-get install jq (or equivalent)
 
@@ -31,37 +41,32 @@ check_success() {
   echo ""
 }
 
-# Function to generate headers for /web and /crawl endpoints
-get_calliope_headers() {
-  local timestamp=$(date +%s) # Seconds since epoch
-  # These headers are based on the calliope_proxy.md documentation
-  # For testing, some values are hardcoded.
-  echo "key: ${CALLIOPE_API_KEY}"
-  echo "timestamp: ${timestamp}"
-  echo "v: 1"
-  echo "extensionVersion: 0.1.0-test" # Test version
-  echo "os: Linux" # Test OS
-  echo "uniqueId: test-user-123" # Test user ID
-}
-
 # Placeholder for future test functions
 echo "Script created. Test functions will be added in subsequent steps."
 
 test_web_search() {
   echo "Testing /web endpoint (Web Search)..."
 
+  if [ -z "${CALLIOPE_API_KEY}" ]; then
+    echo "SKIPPING: CALLIOPE_API_KEY not set."
+    true
+    check_success
+    return
+  fi
+
   local query_payload='{"query": "calliope ai coder", "n": 2}'
 
-  # Get headers
-  # Note: IFS manipulation is a robust way to read lines into an array or pass to curl
-  local header_args=()
-  while IFS= read -r header_line; do
-    header_args+=(-H "${header_line}")
-  done < <(get_calliope_headers)
-
-  # Make request
+  # Get headers - need to set them properly as individual -H flags
+  local timestamp=$(date +%s)
+  
+  # Make request with proper headers
   response=$(curl -s -w "\n%{http_code}" -X POST \
-    "${header_args[@]}" \
+    -H "key: ${CALLIOPE_API_KEY}" \
+    -H "timestamp: ${timestamp}" \
+    -H "v: 1" \
+    -H "extensionVersion: 0.1.0-test" \
+    -H "os: Linux" \
+    -H "uniqueId: test-user-123" \
     -H "Content-Type: application/json" \
     --data "${query_payload}" \
     "${PROXY_BASE_URL}/api/web")
@@ -73,22 +78,20 @@ test_web_search() {
   echo "Response Body: ${body}"
   echo "HTTP Code: ${http_code}"
 
-  # Validate
+  # Validate - According to API spec, should return array of ContextItem objects
   if [ "${http_code}" -eq 200 ]; then
-    # Check if results is an array of length n using jq
-    # And if the first element has a 'title' and 'url'
-    jq_check=$(echo "${body}" | jq '.results | (length == 2) and (.[0] | has("title") and has("url"))')
+    # Check if response is an array and if elements have required ContextItem fields
+    jq_check=$(echo "${body}" | jq 'if type == "array" then length > 0 and (.[0] | has("name") and has("description") and has("content")) else false end')
     if [ "${jq_check}" == "true" ]; then
-      echo "Validation: Correct structure and item count."
-      # check_success will use $? which should be 0 if jq_check was true
-      true # Sets $? to 0
+      echo "Validation: Correct ContextItem array structure."
+      true
     else
-      echo "Validation: Incorrect structure or item count. JQ check: ${jq_check}"
-      false # Sets $? to 1
+      echo "Validation: Incorrect structure. Expected array of ContextItem objects. JQ check: ${jq_check}"
+      false
     fi
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
-    false # Sets $? to 1
+    false
   fi
   check_success
 }
@@ -96,18 +99,26 @@ test_web_search() {
 test_crawl_website() {
   echo "Testing /crawl endpoint (Website Crawler)..."
 
+  if [ -z "${CALLIOPE_API_KEY}" ]; then
+    echo "SKIPPING: CALLIOPE_API_KEY not set."
+    true
+    check_success
+    return
+  fi
+
   # Using a known, simple, and reliable URL for testing.
   # Small depth and limit to make the test quick.
   local crawl_payload='{"startUrl": "https://www.iana.org/domains/reserved", "maxDepth": 0, "limit": 1}'
-  # maxDepth 0 usually means only the startUrl itself.
 
-  local header_args=()
-  while IFS= read -r header_line; do
-    header_args+=(-H "${header_line}")
-  done < <(get_calliope_headers)
+  local timestamp=$(date +%s)
 
   response=$(curl -s -w "\n%{http_code}" -X POST \
-    "${header_args[@]}" \
+    -H "key: ${CALLIOPE_API_KEY}" \
+    -H "timestamp: ${timestamp}" \
+    -H "v: 1" \
+    -H "extensionVersion: 0.1.0-test" \
+    -H "os: Linux" \
+    -H "uniqueId: test-user-123" \
     -H "Content-Type: application/json" \
     --data "${crawl_payload}" \
     "${PROXY_BASE_URL}/api/crawl")
@@ -119,19 +130,19 @@ test_crawl_website() {
   echo "HTTP Code: ${http_code}"
 
   if [ "${http_code}" -eq 200 ]; then
-    # Check if 'data' array exists, is not empty, has resultsCount, and first item has 'url' and 'content'
-    jq_check=$(echo "${body}" | jq 'has("resultsCount") and (.data | length > 0) and (.data[0] | has("url") and has("content"))')
+    # According to API spec, should return array of PageData objects with url, path, content
+    jq_check=$(echo "${body}" | jq 'if type == "array" then length > 0 and (.[0] | has("url") and has("path") and has("content")) else false end')
     if [ "${jq_check}" == "true" ]; then
-      echo "Validation: Correct structure and data presence."
+      echo "Validation: Correct PageData array structure."
       true
     else
-      echo "Validation: Incorrect structure or missing data. JQ check: ${jq_check}"
-      echo "Body was: ${body}" # Print full body on JQ fail for diagnostics
+      echo "Validation: Incorrect structure. Expected array of PageData objects. JQ check: ${jq_check}"
+      echo "Body was: ${body}"
       false
     fi
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
-    echo "Body was: ${body}" # Print full body on HTTP fail for diagnostics
+    echo "Body was: ${body}"
     false
   fi
   check_success
@@ -140,13 +151,6 @@ test_crawl_website() {
 test_chat_completions_ollama() {
   echo "Testing /model-proxy/v1/chat/completions (Ollama)..."
 
-  if [ -z "${OLLAMA_API_BASE}" ]; then
-    echo "SKIPPING: OLLAMA_API_BASE not set."
-    # Consider this a pass for skipping, so $? is 0
-    true
-    check_success
-    return
-  fi
   if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
     echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
     true
@@ -154,19 +158,22 @@ test_chat_completions_ollama() {
     return
   fi
 
+  # Set default OLLAMA_API_BASE if not provided
+  local ollama_base="${OLLAMA_API_BASE:-http://localhost:11434/v1}"
+  
   # User should ensure 'llama2' or their desired model is available in Ollama.
   # The model string "jules-test/ollama-pkg/ollama/llama2" is an example.
   # The proxy parses "{ownerSlug}/{packageSlug}/{provider}/{model}"
   local ollama_payload=$(cat <<EOF
 {
-  "model": "jules-test/ollama-pkg/ollama/gemma3:4b",
+  "model": "jules-test/ollama-pkg/ollama/qwen3:1.7b",
   "messages": [
-    {"role": "user", "content": "Why is the sky blue?"}
+    {"role": "user", "content": "Say 'Hello from Ollama' and nothing else."}
   ],
   "max_tokens": 50,
-  "temperature": 0.7,
+  "temperature": 0.0,
   "calliopeProperties": {
-    "apiBase": "${OLLAMA_API_BASE}",
+    "apiBase": "${ollama_base}",
     "apiKeyLocation": "env:OLLAMA_API_KEY"
   }
 }
@@ -198,6 +205,10 @@ EOF
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
     echo "Body was: ${body}"
+    # Don't fail if Ollama isn't available - just note it
+    if [[ "${body}" == *"Failed to retrieve API key"* ]]; then
+      echo "Note: This may be expected if OLLAMA_API_KEY is not set or Ollama is not running."
+    fi
     false
   fi
   check_success
@@ -206,37 +217,28 @@ EOF
 test_chat_completions_gemini() {
   echo "Testing /model-proxy/v1/chat/completions (Google Gemini)..."
 
-  if [ -z "${GEMINI_API_BASE}" ]; then
-    echo "SKIPPING: GEMINI_API_BASE not set."
-    true # Consider skip as pass
-    check_success
-    return
-  fi
-  if [ -z "${GEMINI_API_KEY}" ]; then
-    echo "SKIPPING: GEMINI_API_KEY not set."
-    true # Consider skip as pass
-    check_success
-    return
-  fi
   if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
     echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
-    true # Consider skip as pass
+    true
     check_success
     return
   fi
+
+  # Use default if not provided
+  local gemini_base="${GEMINI_API_BASE:-https://generativelanguage.googleapis.com/v1beta}"
 
   # The model string "jules-test/gemini-pkg/google/gemini-pro" is an example.
   # User needs to ensure this model is valid for their Gemini setup.
   local gemini_payload=$(cat <<EOF
 {
-  "model": "jules-test/gemini-pkg/google/gemini-2.0-flash",
+  "model": "jules-test/gemini-pkg/google/gemini-2.0-flash-exp",
   "messages": [
-    {"role": "user", "content": "What are the main features of Google Gemini?"}
+    {"role": "user", "content": "Say 'Hello from Gemini' and nothing else."}
   ],
-  "max_tokens": 100,
-  "temperature": 0.7,
+  "max_tokens": 50,
+  "temperature": 0.0,
   "calliopeProperties": {
-    "apiBase": "${GEMINI_API_BASE}",
+    "apiBase": "${gemini_base}",
     "apiKeyLocation": "env:GEMINI_API_KEY"
   }
 }
@@ -269,6 +271,10 @@ EOF
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
     echo "Body was: ${body}"
+    # Don't fail if API key isn't available - just note it
+    if [[ "${body}" == *"Failed to retrieve API key"* ]]; then
+      echo "Note: This may be expected if GEMINI_API_KEY is not set."
+    fi
     false
   fi
   check_success
@@ -277,18 +283,14 @@ EOF
 test_embeddings_ollama() {
   echo "Testing /model-proxy/v1/embeddings (Ollama)..."
 
-  if [ -z "${OLLAMA_API_BASE}" ]; then
-    echo "SKIPPING: OLLAMA_API_BASE not set."
-    true # Consider skip as pass
-    check_success
-    return
-  fi
   if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
     echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
-    true # Consider skip as pass
+    true
     check_success
     return
   fi
+
+  local ollama_base="${OLLAMA_API_BASE:-http://localhost:11434/v1}"
 
   # User should ensure 'nomic-embed-text' or their desired embedding model is available in Ollama.
   # Model string "jules-test/ollama-embed/ollama/nomic-embed-text" is an example.
@@ -297,7 +299,7 @@ test_embeddings_ollama() {
   "model": "jules-test/ollama-embed/ollama/nomic-embed-text",
   "input": "This is a test sentence for generating embeddings.",
   "calliopeProperties": {
-    "apiBase": "${OLLAMA_API_BASE}",
+    "apiBase": "${ollama_base}",
     "apiKeyLocation": "env:OLLAMA_API_KEY"
   }
 }
@@ -331,6 +333,9 @@ EOF
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
     echo "Body was: ${body}"
+    if [[ "${body}" == *"Failed to retrieve API key"* ]]; then
+      echo "Note: This may be expected if OLLAMA_API_KEY is not set or Ollama is not running."
+    fi
     false
   fi
   check_success
@@ -339,34 +344,24 @@ EOF
 test_embeddings_gemini() {
   echo "Testing /model-proxy/v1/embeddings (Google Gemini)..."
 
-  if [ -z "${GEMINI_API_BASE}" ]; then
-    echo "SKIPPING: GEMINI_API_BASE not set."
-    true # Consider skip as pass
-    check_success
-    return
-  fi
-  if [ -z "${GEMINI_API_KEY}" ]; then
-    echo "SKIPPING: GEMINI_API_KEY not set."
-    true # Consider skip as pass
-    check_success
-    return
-  fi
   if [ -z "${PROXY_ACCESS_TOKEN}" ]; then
     echo "SKIPPING: PROXY_ACCESS_TOKEN not set."
-    true # Consider skip as pass
+    true
     check_success
     return
   fi
+
+  local gemini_base="${GEMINI_API_BASE:-https://generativelanguage.googleapis.com/v1beta}"
 
   # User should ensure 'embedding-001' or their desired model is valid for Gemini.
   # The model string "jules-test/gemini-embed/google/embedding-001" is an example.
   # Gemini actual model might be "models/embedding-001" or "text-embedding-004" etc.
   local gemini_payload=$(cat <<EOF
 {
-  "model": "jules-test/gemini-embed/google/embedding-001",
+  "model": "jules-test/gemini-embed/google/text-embedding-004",
   "input": "This is a test sentence for generating Gemini embeddings.",
   "calliopeProperties": {
-    "apiBase": "${GEMINI_API_BASE}",
+    "apiBase": "${gemini_base}",
     "apiKeyLocation": "env:GEMINI_API_KEY"
   }
 }
@@ -398,6 +393,9 @@ EOF
   else
     echo "Validation: Expected HTTP 200, got ${http_code}"
     echo "Body was: ${body}"
+    if [[ "${body}" == *"Failed to retrieve API key"* ]]; then
+      echo "Note: This may be expected if GEMINI_API_KEY is not set."
+    fi
     false
   fi
   check_success
@@ -413,3 +411,8 @@ test_chat_completions_ollama
 test_chat_completions_gemini
 test_embeddings_ollama
 test_embeddings_gemini
+
+echo ""
+echo "=============================================="
+echo "Test Summary Complete"
+echo "=============================================="
