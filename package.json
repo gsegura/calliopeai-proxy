@@ -44,13 +44,17 @@
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/morgan": "^1.9.10",
     "axios": "^1.9.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "crawlee": "^3.13.7",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "js-yaml": "^4.1.0",
     "langchain": "^0.3.27",
+    "morgan": "^1.10.0",
     "playwright": "^1.45.3"
   }
 }

@@ -1,5 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    slug: string;
+    email: string;
+  };
+}
+
 export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
   const requiredHeaders = ['key', 'timestamp', 'v', 'extensionversion', 'os', 'uniqueid'];
   const missingHeaders = [];
@@ -21,9 +29,31 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
   // More sophisticated validation can be added later.
 
   next();
+
+  //TODO: Implement JWT validation and user extraction
+  // In a real implementation, you would decode the JWT and extract user info
+      // For demo purposes, we'll extract a mock user from the token or set a default
+      
+     // try {
+        // TODO: Replace with actual JWT decoding
+        // const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // req.user = decoded.user;
+        
+        // For demo purposes, set a default user
+        // In practice, this would come from JWT claims
+     //   req.user = {
+     //     id: 'user-001', // This should come from JWT claims
+     //     slug: 'demo-user',
+      //    email: 'demo@example.com'
+      //  };
+        
+     //   next();
+    //  } catch (error) {
+    //    res.status(401).json({ error: 'Unauthorized: Invalid JWT token.' });
+     // }
 };
 
-export const authenticateBearerToken = (req: Request, res: Response, next: NextFunction) => {
+export const authenticateBearerToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {

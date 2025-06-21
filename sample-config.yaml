@@ -1,0 +1,196 @@
+# Calliope Proxy Configuration
+# This file configures the Continue.dev platform proxy for IDE integration
+
+# Users in the system
+users:
+  - id: user-001
+    slug: demo-user
+    name: Demo User
+    email: demo@example.com
+    organizations:
+      - org-001
+    role: admin
+
+  - id: user-002
+    slug: jane-developer
+    name: Jane Developer
+    email: jane@example.com
+    organizations:
+      - org-001
+    role: member
+
+# Organizations for team collaboration
+organizations:
+  - id: org-001
+    slug: demo-org
+    name: Demo Organization
+    iconUrl: https://via.placeholder.com/64x64.png?text=DO
+    tier: teams # solo, teams, or enterprise
+    members:
+      - userId: user-001
+        role: admin
+      - userId: user-002
+        role: member
+
+  - id: org-002
+    slug: acme-corp
+    name: ACME Corp
+    iconUrl: https://via.placeholder.com/64x64.png?text=AC
+    tier: enterprise
+    members:
+      - userId: user-001
+        role: admin
+
+# Assistant configurations
+assistants:
+  - ownerSlug: demo-user
+    packageSlug: default-assistant
+    version: 1.0.0
+    iconUrl: https://via.placeholder.com/64x64.png?text=AI
+    useOnPremProxy: false
+    rawYaml: |
+      name: Default Assistant
+      version: 1.0.0
+      models:
+        - title: GPT-4
+          provider: openai
+          model: gpt-4
+          apiKey: ${{ secrets.demo-user/default-assistant@OPENAI_API_KEY }}
+        - title: Claude 3.5 Sonnet
+          provider: anthropic
+          model: claude-3-5-sonnet-20241022
+          apiKey: ${{ secrets.demo-user/default-assistant@ANTHROPIC_API_KEY }}
+      context:
+        - name: code
+          type: highlight
+        - name: file
+          type: file
+      prompts:
+        - name: system
+          template: "You are a helpful AI coding assistant."
+        - name: edit
+          template: "Please edit the following code according to the instructions."
+    config:
+      name: Default Assistant
+      version: 1.0.0
+      models:
+        - title: GPT-4
+          provider: openai
+          model: gpt-4
+          apiKey: ${{ secrets.demo-user/default-assistant@OPENAI_API_KEY }}
+        - title: Claude 3.5 Sonnet
+          provider: anthropic
+          model: claude-3-5-sonnet-20241022
+          apiKey: ${{ secrets.demo-user/default-assistant@ANTHROPIC_API_KEY }}
+      context:
+        - name: code
+          type: highlight
+        - name: file
+          type: file
+      prompts:
+        - name: system
+          template: "You are a helpful AI coding assistant."
+        - name: edit
+          template: "Please edit the following code according to the instructions."
+
+  - ownerSlug: demo-org
+    packageSlug: team-assistant
+    version: 2.1.3
+    iconUrl: https://via.placeholder.com/64x64.png?text=TA
+    useOnPremProxy: true
+    rawYaml: |
+      name: Team Assistant
+      version: 2.1.3
+      models:
+        - title: GPT-4 Turbo
+          provider: openai
+          model: gpt-4-turbo
+          apiKey: ${{ secrets.demo-org/team-assistant@OPENAI_API_KEY }}
+      context:
+        - name: codebase
+          type: codebase
+        - name: docs
+          type: docs
+          url: https://docs.example.com
+      mcpServers:
+        - name: filesystem
+          command: node
+          args:
+            - /path/to/mcp-server-filesystem
+      prompts:
+        - name: system
+          template: "You are a senior engineering assistant for the team."
+    config:
+      name: Team Assistant
+      version: 2.1.3
+      models:
+        - title: GPT-4 Turbo
+          provider: openai
+          model: gpt-4-turbo
+          apiKey: ${{ secrets.demo-org/team-assistant@OPENAI_API_KEY }}
+      context:
+        - name: codebase
+          type: codebase
+        - name: docs
+          type: docs
+          url: https://docs.example.com
+      mcpServers:
+        - name: filesystem
+          command: node
+          args:
+            - /path/to/mcp-server-filesystem
+      prompts:
+        - name: system
+          template: "You are a senior engineering assistant for the team."
+
+# Secret management with resolution hierarchy
+secrets:
+  # User-scoped secrets (returned directly to IDE)
+  user:
+    demo-user:
+      secrets:
+        OPENAI_API_KEY: sk-user-openai-key-replace-with-real-key
+        ANTHROPIC_API_KEY: sk-ant-user-anthropic-key-replace-with-real-key
+        COHERE_API_KEY: your-cohere-api-key-here
+    jane-developer:
+      secrets:
+        OPENAI_API_KEY: sk-jane-openai-key-replace-with-real-key
+        ANTHROPIC_API_KEY: sk-ant-jane-anthropic-key-replace-with-real-key
+
+  # Organization-scoped secrets (proxy-only, not returned to IDE)
+  organization:
+    demo-org:
+      secrets:
+        OPENAI_API_KEY: sk-org-openai-key-replace-with-real-key
+        ANTHROPIC_API_KEY: sk-ant-org-anthropic-key-replace-with-real-key
+        TEAM_SHARED_SECRET: org-secret-for-team-features
+    acme-corp:
+      secrets:
+        OPENAI_API_KEY: sk-acme-openai-key-replace-with-real-key
+        ANTHROPIC_API_KEY: sk-ant-acme-anthropic-key-replace-with-real-key
+        ENTERPRISE_LICENSE_KEY: acme-enterprise-license-key
+
+  # Models Add-On secrets (subscription-based access)
+  modelsAddOn:
+    openai-addon:
+      secrets:
+        OPENAI_API_KEY: sk-addon-openai-key-replace-with-real-key
+    anthropic-addon:
+      secrets:
+        ANTHROPIC_API_KEY: sk-ant-addon-anthropic-key-replace-with-real-key
+    cohere-addon:
+      secrets:
+        COHERE_API_KEY: addon-cohere-api-key-here
+
+  # Free trial secrets (fallback for trial users)
+  freeTrial:
+    free-trial-block:
+      secrets:
+        OPENAI_API_KEY: sk-free-trial-openai-key-replace-with-real-key
+        ANTHROPIC_API_KEY: sk-ant-free-trial-anthropic-key-replace-with-real-key
+
+# Free trial configuration
+freeTrialSettings:
+  chatLimit: 100          # Maximum chat interactions per trial period
+  autocompleteLimit: 500  # Maximum autocomplete requests per trial period
+  defaultOptIn: true      # Whether users are opted in by default

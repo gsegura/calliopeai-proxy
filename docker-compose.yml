@@ -11,6 +11,8 @@ services:
       - .env # Passes environment variables from .env file to the container
     # networks:
     #   - your_network_name # Uncomment if you have a shared network
+    volumes:
+      - ./sample-config.yaml:/app/config.yaml
 
   markitdown:
     build:
