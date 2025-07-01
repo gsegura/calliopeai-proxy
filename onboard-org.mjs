@@ -83,20 +83,52 @@ const questions = [
     message: 'Enter the Anthropic API key:',
     mask: '*',
   },
+  {
+    type: 'password',
+    name: 'geminiApiKey',
+    message: 'Enter the Gemini API key:',
+    mask: '*',
+  },
+  {
+    type: 'input',
+    name: 'ollamaBaseUrl',
+    message: 'Enter the Ollama base URL (e.g., http://localhost:11434):',
+    default: 'http://localhost:11434',
+  },
 ];
 
 // Correctly indented YAML template
-const defaultAssistantTemplate = (orgSlug) => `name: Default Assistant
+const defaultAssistantTemplate = (orgSlug, ollamaBaseUrl) => `name: Default Assistant
 version: 1.0.0
 models:
   - name: GPT-4
     provider: calliope-proxy
     model: openai/gpt-4o
     apiKey: \${{ secrets.${orgSlug}/default-assistant@OPENAI_API_KEY }}
+  - name: o3
+    provider: calliope-proxy
+    model: openai/o3
+    apiKey: \${{ secrets.${orgSlug}/default-assistant@OPENAI_API_KEY }}
   - name: Claude 3.5 Sonnet
     provider: calliope-proxy
     model: anthropic/claude-3-5-sonnet
     apiKey: \${{ secrets.${orgSlug}/default-assistant@ANTHROPIC_API_KEY }}
+  - name: Claude 3.7 Sonnet
+    provider: calliope-proxy
+    model: anthropic/claude-3-7-sonnet
+    apiKey: \${{ secrets.${orgSlug}/default-assistant@ANTHROPIC_API_KEY }}
+  - name: Gemini 2.5 Pro
+    provider: calliope-proxy
+    model: gemini/gemini-2.5-pro
+    apiKey: \${{ secrets.${orgSlug}/default-assistant@GEMINI_API_KEY }}
+  - name: Gemini 2.5 Flash
+    provider: calliope-proxy
+    model: gemini/gemini-2.5-flash
+    apiKey: \${{ secrets.${orgSlug}/default-assistant@GEMINI_API_KEY }}
+  - name: Ollama
+    provider: calliope-proxy
+    model: ollama/AUTODETECT
+    apiBase: ${ollamaBaseUrl}
 context:
   - name: code
     type: highlight
@@ -110,7 +142,7 @@ prompts:
 `;
 
 inquirer.prompt(questions).then((answers) => {
-  const { orgName, orgSlug, userName, userEmail, userSlug, openaiApiKey, anthropicApiKey } = answers;
+  const { orgName, orgSlug, userName, userEmail, userSlug, openaiApiKey, anthropicApiKey, geminiApiKey, ollamaBaseUrl } = answers;
 
   const orgId = `org-${Date.now()}`;
   const userId = `user-${Date.now() + 1}`; // Ensure different timestamp
@@ -138,7 +170,7 @@ inquirer.prompt(questions).then((answers) => {
     role: 'admin',
   };
 
-  const rawYaml = defaultAssistantTemplate(orgSlug);
+  const rawYaml = defaultAssistantTemplate(orgSlug, ollamaBaseUrl);
   const configFromYaml = yaml.load(rawYaml);
 
   const newAssistant = {
@@ -157,6 +189,7 @@ inquirer.prompt(questions).then((answers) => {
         secrets: {
           OPENAI_API_KEY: openaiApiKey,
           ANTHROPIC_API_KEY: anthropicApiKey,
+          GEMINI_API_KEY: geminiApiKey,
         },
       },
     },
