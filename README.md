@@ -66,6 +66,28 @@ Example for OpenAI:
   ```
 Make sure to set the correct `apiBase` for each provider alongside the API key. For Azure OpenAI, `apiBase` would be your specific Azure resource endpoint. For Ollama, it would be the URL where your Ollama instance is running (e.g., `http://localhost:11434/api`).
 
+## Onboarding New Organizations and Users
+
+A script is provided to facilitate the onboarding of new organizations and users. This script will interactively ask for the necessary information and then update the `config.yaml` file.
+
+To use the script, run the following command:
+
+```bash
+node onboard-org.mjs
+```
+
+The script will ask for the following information:
+
+*   Organization name
+*   Organization slug
+*   User's full name
+*   User's email address
+*   User's slug
+*   OpenAI API key
+*   Anthropic API key
+
+After providing the information, the script will update the `config.yaml` file with the new organization, user, and secrets. It will also create a default assistant for the new organization.
+
 ## Running the Application
 
 ### Development Mode
