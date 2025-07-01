@@ -1,0 +1,63 @@
+# Customer-Specific Docker Compose Template
+# This template shows how to deploy Calliope Proxy for a specific customer
+# Replace CUSTOMER_ID and other values with actual customer data
+
+version: '3.8'
+
+services:
+  calliope-proxy-CUSTOMER_ID:
+    image: calliope-proxy:latest
+    container_name: calliope-proxy-CUSTOMER_ID
+    ports:
+      - "CUSTOMER_PORT:3002"
+    environment:
+      # Customer license (generated with generate-license.js)
+      - CALLIOPE_LICENSE_KEY=CUSTOMER_LICENSE_TOKEN_HERE
+      
+      # Public key for license validation (same for all customers)
+      - CALLIOPE_PUBLIC_KEY=${CALLIOPE_PUBLIC_KEY}
+      
+      # Customer-specific configuration
+      - CUSTOMER_ID=CUSTOMER_ID
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      
+      # Customer's API keys (stored securely)
+      - OPENAI_API_KEY=${CUSTOMER_OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${CUSTOMER_ANTHROPIC_API_KEY}
+      - TAVILY_API_KEY=${CUSTOMER_TAVILY_API_KEY}
+      
+    volumes:
+      # Customer-specific configuration
+      - ./customer-configs/CUSTOMER_ID-config.yaml:/app/config.yaml:ro
+      
+    networks:
+      - customer-network
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/auth/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      
+    restart: unless-stopped
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"  # Run as non-root user
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+networks:
+  customer-network:
+    driver: bridge
