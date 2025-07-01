@@ -164,7 +164,12 @@ export class InMemoryStorage implements IStorage {
 
     // Filter by organization if specified
     if (organizationId) {
-      const org = this.findOrganizationById(organizationId);
+      // Try to find by ID first, then by slug for backward compatibility
+      let org = this.findOrganizationById(organizationId);
+      if (!org) {
+        org = this.findOrganizationBySlug(organizationId);
+      }
+      
       if (org) {
         assistants = assistants.filter(assistant => assistant.ownerSlug === org.slug);
       } else {
@@ -192,7 +197,7 @@ export class InMemoryStorage implements IStorage {
       // Process template variables in the configuration
       assistantInfo.configResult.config = await this.processTemplateVariables(
         assistant.config, 
-        organizationId
+        organizationId || null
       );
 
       assistantInfos.push(assistantInfo);
@@ -201,42 +206,73 @@ export class InMemoryStorage implements IStorage {
     return assistantInfos;
   }
 
-  private async processTemplateVariables(config: any, orgScopeId?: string | null): Promise<any> {
+  private async processTemplateVariables(config: any, orgScopeId: string | null): Promise<any> {
     // Deep clone the config to avoid modifying the original
     const processedConfig = JSON.parse(JSON.stringify(config));
     
     // Process template variables like ${{ secrets.user123/my-assistant@OPENAI_API_KEY }}
     const processValue = async (value: any): Promise<any> => {
       if (typeof value === 'string' && value.includes('${{')) {
-        // Extract template variables and resolve them
-        const templateRegex = /\$\{\{\s*secrets\.([^/]+)\/([^@]+)@([^}]+)\s*\}\}/g;
         let processedValue = value;
-        let match;
         
-        while ((match = templateRegex.exec(value)) !== null) {
-          const [fullMatch, ownerSlug, packageSlug, secretName] = match;
+        // Find all template matches first
+        const templateRegex = /\$\{\{\s*secrets\.([^\s}]+)\s*\}\}/g;
+        const matches = Array.from(value.matchAll(templateRegex));
+        
+        for (const match of matches) {
+          const fullMatch = match[0];
+          const fqsnString = match[1];
+          const parts = fqsnString.split('@');
+          if (parts.length !== 2) continue;
+
+          const ownerAndPackage = parts[0].split('/');
+          const secretName = parts[1];
+
+          if (ownerAndPackage.length < 1 || !secretName) continue;
+
+          const ownerSlug = ownerAndPackage[0];
+          const packageSlug = ownerAndPackage.slice(1).join('/');
+
           const fqsn: FQSN = { ownerSlug, packageSlug, secretName };
-          
-          const secretResult = await this.resolveSingleSecret(fqsn, orgScopeId || null);
-          if (secretResult?.value) {
-            processedValue = processedValue.replace(fullMatch, secretResult.value);
-          } else if (secretResult?.secretLocation) {
-            // For org secrets, we might want to leave a placeholder or handle differently
-            processedValue = processedValue.replace(fullMatch, `[SECRET:${secretName}]`);
+          const secretResult = await this.resolveSingleSecret(fqsn, orgScopeId);
+
+          if (secretResult) {
+            if (secretResult.value) {
+              // User secret with value
+              processedValue = processedValue.replace(fullMatch, secretResult.value);
+            } else if (secretResult.secretLocation) {
+              // Other secret types with location
+              const { secretType, orgSlug, userSlug, blockSlug, secretName: locSecretName } = secretResult.secretLocation;
+              let encodedLocation = `${secretType}:`;
+              switch (secretType) {
+                case 'organization':
+                  encodedLocation += `${orgSlug}/${locSecretName}`;
+                  break;
+                case 'user':
+                  encodedLocation += `${userSlug}/${locSecretName}`;
+                  break;
+                case 'models_add_on':
+                case 'free_trial':
+                  encodedLocation += `${blockSlug}/${locSecretName}`;
+                  break;
+                default:
+                  encodedLocation += locSecretName;
+              }
+              processedValue = processedValue.replace(fullMatch, encodedLocation);
+            }
           }
         }
-        
         return processedValue;
+      } else if (Array.isArray(value)) {
+        return Promise.all(value.map(item => processValue(item)));
       } else if (typeof value === 'object' && value !== null) {
-        if (Array.isArray(value)) {
-          return Promise.all(value.map(processValue));
-        } else {
-          const processed: any = {};
-          for (const [key, val] of Object.entries(value)) {
-            processed[key] = await processValue(val);
+        const processedObject: { [key: string]: any } = {};
+        for (const key in value) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            processedObject[key] = await processValue(value[key]);
           }
-          return processed;
         }
+        return processedObject;
       }
       
       return value;
@@ -250,7 +286,12 @@ export class InMemoryStorage implements IStorage {
 
     // Filter by organization if specified
     if (organizationId) {
-      const org = this.findOrganizationById(organizationId);
+      // Try to find by ID first, then by slug for backward compatibility
+      let org = this.findOrganizationById(organizationId);
+      if (!org) {
+        org = this.findOrganizationBySlug(organizationId);
+      }
+      
       if (org) {
         assistants = assistants.filter(assistant => assistant.ownerSlug === org.slug);
       } else {
@@ -368,27 +409,23 @@ export class InMemoryStorage implements IStorage {
   getSecretValue(secretLocation: SecretLocation): string | undefined {
     switch (secretLocation.secretType) {
       case 'user':
-        if (secretLocation.userSlug) {
-          const userSecrets = this.config.secrets.user[secretLocation.userSlug];
-          return userSecrets?.secrets[secretLocation.secretName];
+        if (secretLocation.userSlug && this.config.secrets.user[secretLocation.userSlug]) {
+          return this.config.secrets.user[secretLocation.userSlug].secrets[secretLocation.secretName];
         }
         break;
       case 'organization':
-        if (secretLocation.orgSlug) {
-          const orgSecrets = this.config.secrets.organization[secretLocation.orgSlug];
-          return orgSecrets?.secrets[secretLocation.secretName];
+        if (secretLocation.orgSlug && this.config.secrets.organization[secretLocation.orgSlug]) {
+          return this.config.secrets.organization[secretLocation.orgSlug].secrets[secretLocation.secretName];
         }
         break;
       case 'models_add_on':
-        if (secretLocation.blockSlug) {
-          const modelsAddOnSecrets = this.config.secrets.modelsAddOn[secretLocation.blockSlug];
-          return modelsAddOnSecrets?.secrets[secretLocation.secretName];
+        if (secretLocation.blockSlug && this.config.secrets.modelsAddOn[secretLocation.blockSlug]) {
+          return this.config.secrets.modelsAddOn[secretLocation.blockSlug].secrets[secretLocation.secretName];
         }
         break;
       case 'free_trial':
-        if (secretLocation.blockSlug) {
-          const freeTrialSecrets = this.config.secrets.freeTrial[secretLocation.blockSlug];
-          return freeTrialSecrets?.secrets[secretLocation.secretName];
+        if (secretLocation.blockSlug && this.config.secrets.freeTrial[secretLocation.blockSlug]) {
+          return this.config.secrets.freeTrial[secretLocation.blockSlug].secrets[secretLocation.secretName];
         }
         break;
     }

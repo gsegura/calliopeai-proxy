@@ -70,6 +70,30 @@ export class IdeController {
       
       const assistants = await storage.listAssistants(organizationId || null, useProxy);
 
+      // Post-process assistants to ensure correct format for the extension
+      for (const assistant of assistants) {
+        if (assistant.configResult.config?.models) {
+          for (const model of assistant.configResult.config.models) {
+            if (model.provider === 'calliope-proxy' && typeof model.apiKey === 'string') {
+              // Handle encoded secret locations
+              if (model.apiKey.includes(':')) {
+                // This is an encoded secret location
+                model.apiKeyLocation = model.apiKey;
+                
+                // Set orgScopeId based on secret type and context
+                if (model.apiKey.startsWith('organization:') && organizationId) {
+                  model.orgScopeId = organizationId;
+                } else if (model.apiKey.startsWith('free_trial:') && organizationId) {
+                  model.orgScopeId = organizationId;
+                } else if (model.apiKey.startsWith('models_add_on:') && organizationId) {
+                  model.orgScopeId = organizationId;
+                }
+              }
+            }
+          }
+        }
+      }
+
       res.status(200).json(assistants);
     } catch (error: any) {
       console.error('Error in listAssistants:', error);
